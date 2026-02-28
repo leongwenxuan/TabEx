@@ -1,0 +1,9 @@
+{
+  "name": "com.tabx.host",
+  "description": "TabX native host — provides git context and tab scoring for the TabX Chrome extension",
+  "path": "/usr/local/bin/tabx-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
+  ]
+}
