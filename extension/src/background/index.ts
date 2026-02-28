@@ -53,7 +53,7 @@ const tabTracker = new TabTracker(async (tabs) => {
 // ─── Decision handler (called from native client) ─────────────────────────────
 
 async function handleDecisions(
-  decisions: Array<{ tabId: number; decision: TabDecision; score: number }>
+  decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>
 ): Promise<void> {
   await decisionManager.processDecisions(decisions);
   await broadcastPopupState();
@@ -208,11 +208,13 @@ chrome.runtime.onInstalled.addListener(async () => {
 // Reconnect on service worker startup (after browser restart, etc.)
 nativeClient.connect();
 
-// Seed existing tabs on startup (extension may have been reloaded mid-session)
-void chrome.tabs.query({}, async (tabs) => {
+// Prune stale tabs from storage, then seed currently open tabs
+void (async () => {
+  await tabTracker.pruneStale();
+  const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
-    if (tab.id && tab.url && !tab.url.startsWith("chrome://")) {
+    if (tab.id && tab.url) {
       await tabTracker.onTabCreated(tab);
     }
   }
-});
+})();

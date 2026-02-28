@@ -17,7 +17,6 @@ public protocol BundleGeneratorProtocol: Sendable {
 
 // MARK: - Conformances
 
-extension ScoringEngine: ScoringEngineProtocol {}
 extension BundleManager: BundleGeneratorProtocol {}
 
 // MARK: - MessageRouter
@@ -34,11 +33,14 @@ public final class MessageRouter {
     public var onDecisions: (([TabResult], [TabData]) -> Void)?
 
     public init(
-        scorer: any ScoringEngineProtocol = ScoringEngine(),
+        scorer: (any ScoringEngineProtocol)? = nil,
         bundleGen: any BundleGeneratorProtocol = BundleManager(),
         configManager: ConfigManager = ConfigManager()
     ) {
-        self.scorer = scorer
+        self.scorer = scorer ?? AgentRunner(
+            config: configManager.config.scoring,
+            openaiConfig: configManager.config.openai
+        )
         self.bundleGen = bundleGen
         self.configManager = configManager
     }
@@ -54,9 +56,10 @@ public final class MessageRouter {
             bundleGen.ingest(tabs, trackIds: true)
             let results = scorer.score(tabs: tabs)
             bundleGen.updateResults(results)
-            // Persist bundle after each scoring round.
+            // Persist bundle and results after each scoring round.
             let bundle = bundleGen.generateBundle()
             try? BundleStore.saveBundle(bundle)
+            BundleStore.saveResults(results, tabs: tabs)
             onDecisions?(results, tabs)
             return OutgoingMessage(type: .decisions, results: results)
 

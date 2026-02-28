@@ -6,11 +6,12 @@ import Foundation
 ///   --bundle     Generate and print the context bundle (JSON by default, Markdown with --markdown)
 ///   --status     Print a one-line status summary
 ///   --config     Print the current configuration as JSON
+///   --set-key    Save an OpenAI API key to config
 ///   --version    Print the version string
 ///   --help       Print usage information
 public struct CLIHandler {
 
-    private let configManager: ConfigManager
+    private var configManager: ConfigManager
 
     public init(configManager: ConfigManager = ConfigManager()) {
         self.configManager = configManager
@@ -19,7 +20,7 @@ public struct CLIHandler {
     /// Parses `CommandLine.arguments` (excluding the binary name) and runs the matching command.
     /// Returns the exit code.
     @discardableResult
-    public func run(arguments: [String]) -> Int32 {
+    public mutating func run(arguments: [String]) -> Int32 {
         if arguments.isEmpty {
             return 0  // caller should enter native-messaging loop
         }
@@ -31,6 +32,8 @@ public struct CLIHandler {
             return handleStatus()
         case "--config":
             return handleConfig()
+        case "--set-key":
+            return handleSetKey(arguments: Array(arguments.dropFirst()))
         case "--version":
             return handleVersion()
         case "--help", "-h":
@@ -91,12 +94,34 @@ public struct CLIHandler {
         let branch = git.branch ?? "(detached)"
         let repo = git.repoPath ?? "(none)"
         let bundleStatus = bundleExists ? "available" : "none"
+        let apiKeyStatus = configManager.config.openai.hasAPIKey ? "configured" : "not configured"
+        let agentModel = configManager.config.openai.agentModel
+        let judgeModel = configManager.config.openai.judgeModel
         print("tabx-host \(configManager.config.version)")
+        print("Mode:    agent")
         print("Branch:  \(branch)")
         print("Repo:    \(repo)")
         print("Bundle:  \(bundleStatus)")
+        print("API Key: \(apiKeyStatus)")
+        print("Models:  agent=\(agentModel), judge=\(judgeModel)")
         print("Config:  \(ConfigManager.configURL.path)")
         return 0
+    }
+
+    private mutating func handleSetKey(arguments: [String]) -> Int32 {
+        guard let key = arguments.first, !key.isEmpty else {
+            fputs("Usage: tabx-host --set-key <openai-api-key>\n", stderr)
+            return 1
+        }
+        configManager.config.openai.apiKey = key
+        do {
+            try configManager.save()
+            print("API key saved to \(ConfigManager.configURL.path)")
+            return 0
+        } catch {
+            fputs("Error saving config: \(error.localizedDescription)\n", stderr)
+            return 1
+        }
     }
 
     private func handleConfig() -> Int32 {
@@ -118,8 +143,9 @@ public struct CLIHandler {
 
         Options:
           --bundle [--markdown]  Print the latest context bundle (JSON or Markdown)
-          --status               Print current status (branch, repo, bundle)
+          --status               Print current status (branch, repo, agent mode, API key)
           --config               Print the current configuration as JSON
+          --set-key <key>        Save an OpenAI API key to ~/.tabx/config.json
           --version              Print version information
           --help                 Show this help message
         """

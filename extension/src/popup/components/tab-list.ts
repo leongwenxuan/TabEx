@@ -69,6 +69,27 @@ function createTabItem(tab: TabInfo): HTMLElement {
   info.appendChild(titleEl);
   info.appendChild(urlEl);
 
+  // Agent summary (2-line clamp)
+  if (tab.summary) {
+    const summaryEl = document.createElement("div");
+    summaryEl.className = "tab-summary";
+    summaryEl.textContent = tab.summary;
+    info.appendChild(summaryEl);
+  }
+
+  // Agent insights (top 3 as small tags)
+  if (tab.insights && tab.insights.length > 0) {
+    const insightsEl = document.createElement("div");
+    insightsEl.className = "tab-insights";
+    for (const insight of tab.insights.slice(0, 3)) {
+      const tag = document.createElement("span");
+      tag.className = "insight-tag";
+      tag.textContent = insight;
+      insightsEl.appendChild(tag);
+    }
+    info.appendChild(insightsEl);
+  }
+
   // Meta (score + decision badges)
   const meta = document.createElement("div");
   meta.className = "tab-meta";

@@ -14,6 +14,8 @@ export interface TabInfo {
   contentDigest: string;   // first 500 chars of page text
   decision?: TabDecision | undefined;
   score?: number | undefined; // 0-1 relevance score from host
+  summary?: string | undefined; // agent-generated summary
+  insights?: string[] | undefined; // agent-generated insights
 }
 
 export interface TabEvent {

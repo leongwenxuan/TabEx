@@ -71,12 +71,25 @@ public struct TabResult: Codable, Sendable {
     /// Normalised score 0.0–1.0.
     public let score: Double
     public let reason: String
+    /// Agent-generated summary of the tab's content.
+    public let summary: String?
+    /// Agent-generated insights about the tab's relevance.
+    public let insights: [String]?
 
-    public init(tabId: Int, decision: TabDecision, score: Double, reason: String) {
+    public init(
+        tabId: Int,
+        decision: TabDecision,
+        score: Double,
+        reason: String,
+        summary: String? = nil,
+        insights: [String]? = nil
+    ) {
         self.tabId = tabId
         self.decision = decision
         self.score = score
         self.reason = reason
+        self.summary = summary
+        self.insights = insights
     }
 }
 

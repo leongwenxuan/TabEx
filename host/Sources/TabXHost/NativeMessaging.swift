@@ -38,7 +38,18 @@ public final class NativeMessagingIO {
         // Sanity cap: Chrome limits native messages to 1 MB.
         guard length > 0, length <= 1_048_576 else { return nil }
         guard let payload = readExactly(Int(length)) else { return nil }
-        return try? decoder.decode(IncomingMessage.self, from: payload)
+        if let decoded = try? decoder.decode(IncomingMessage.self, from: payload) {
+            return decoded
+        }
+
+        // Be lenient with message formats so a single malformed payload doesn't kill the host.
+        if let fallback = decodeLenient(payload: payload) {
+            return fallback
+        }
+
+        // Keep the process alive instead of forcing Chrome to reconnect in a loop.
+        fputs("tabx-host: received malformed native message; responding with pong fallback\n", stderr)
+        return IncomingMessage(type: .ping)
     }
 
     // MARK: - Writing
@@ -66,6 +77,98 @@ public final class NativeMessagingIO {
             buffer.append(chunk)
         }
         return buffer
+    }
+
+    private func decodeLenient(payload: Data) -> IncomingMessage? {
+        guard
+            let obj = try? JSONSerialization.jsonObject(with: payload),
+            let dict = obj as? [String: Any],
+            let type = dict["type"] as? String
+        else {
+            return nil
+        }
+
+        switch type {
+        case "ping":
+            return IncomingMessage(type: .ping)
+
+        case "request_bundle", "get_context_bundle":
+            return IncomingMessage(type: .requestBundle)
+
+        case "config_update":
+            return IncomingMessage(type: .configUpdate)
+
+        case "tab_update", "tab_data":
+            guard let rawTabs = dict["tabs"] as? [[String: Any]] else {
+                return IncomingMessage(type: .tabUpdate, tabs: [])
+            }
+            let tabs = rawTabs.compactMap(parseTabData)
+            return IncomingMessage(type: .tabUpdate, tabs: tabs)
+
+        default:
+            return nil
+        }
+    }
+
+    private func parseTabData(_ raw: [String: Any]) -> TabData? {
+        guard
+            let tabId = raw["tabId"] as? Int,
+            let url = raw["url"] as? String,
+            let title = raw["title"] as? String
+        else {
+            return nil
+        }
+
+        let timeSpentSeconds: Double = {
+            if let v = raw["timeSpentSeconds"] as? Double { return v }
+            if let v = raw["timeSpentSeconds"] as? Int { return Double(v) }
+            if let ms = raw["timeSpentMs"] as? Double { return ms / 1000.0 }
+            if let ms = raw["timeSpentMs"] as? Int { return Double(ms) / 1000.0 }
+            return 0
+        }()
+
+        let scrollDepth: Double = {
+            if let v = raw["scrollDepth"] as? Double { return v }
+            if let v = raw["scrollDepth"] as? Int { return Double(v) }
+            return 0
+        }()
+
+        let selectedText: String? = {
+            if let v = raw["selectedText"] as? String { return v.isEmpty ? nil : v }
+            if let arr = raw["selections"] as? [String], let last = arr.last, !last.isEmpty { return last }
+            return nil
+        }()
+
+        let contentDigest: String? = {
+            if let v = raw["contentDigest"] as? String { return v.isEmpty ? nil : v }
+            if let v = raw["digest"] as? String { return v.isEmpty ? nil : v }
+            return nil
+        }()
+
+        let lastVisitedAt: Date = {
+            if let iso = raw["lastVisitedAt"] as? String {
+                if let d = ISO8601DateFormatter().date(from: iso) { return d }
+            }
+            if let ts = raw["lastVisitedAt"] as? Double { return Date(timeIntervalSince1970: ts / 1000.0) }
+            if let ts = raw["lastVisitedAt"] as? Int { return Date(timeIntervalSince1970: Double(ts) / 1000.0) }
+            if let ts = raw["timestamp"] as? Double { return Date(timeIntervalSince1970: ts / 1000.0) }
+            if let ts = raw["timestamp"] as? Int { return Date(timeIntervalSince1970: Double(ts) / 1000.0) }
+            return Date()
+        }()
+
+        let isActive = raw["isActive"] as? Bool ?? false
+
+        return TabData(
+            tabId: tabId,
+            url: url,
+            title: title,
+            timeSpentSeconds: max(0, timeSpentSeconds),
+            scrollDepth: max(0, min(1, scrollDepth)),
+            selectedText: selectedText,
+            contentDigest: contentDigest,
+            lastVisitedAt: lastVisitedAt,
+            isActive: isActive
+        )
     }
 }
 

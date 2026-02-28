@@ -2,9 +2,12 @@ import Foundation
 import TabXHostLib
 
 // Drop the binary name from arguments.
+// Chrome passes "chrome-extension://<id>/" as an argument when launching
+// a native messaging host — filter it out so we still enter the messaging loop.
 let args = Array(CommandLine.arguments.dropFirst())
+    .filter { !$0.hasPrefix("chrome-extension://") }
 
-let cli = CLIHandler()
+var cli = CLIHandler()
 let exitCode = cli.run(arguments: args)
 
 // If arguments were provided, the CLI handled the command — exit now.

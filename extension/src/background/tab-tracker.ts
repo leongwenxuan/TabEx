@@ -25,6 +25,7 @@ export class TabTracker {
 
   async onTabCreated(tab: chrome.tabs.Tab): Promise<void> {
     if (!tab.id || !tab.url) return;
+    if (isInternalUrl(tab.url)) return;
     const info: TabInfo = {
       tabId: tab.id,
       url: tab.url ?? "",
@@ -70,6 +71,7 @@ export class TabTracker {
     tab: chrome.tabs.Tab
   ): Promise<void> {
     if (!tab.url) return;
+    if (isInternalUrl(tab.url)) return;
     const existing = await getTab(tabId);
     if (existing) {
       existing.url = tab.url;
@@ -202,4 +204,24 @@ export class TabTracker {
       this.activationTime = now;
     }
   }
+
+  /**
+   * Reconcile stored tabs with actually open Chrome tabs.
+   * Removes stale entries from storage that no longer exist in the browser.
+   */
+  async pruneStale(): Promise<void> {
+    const browserTabs = await chrome.tabs.query({});
+    const openIds = new Set(browserTabs.map((t) => t.id).filter((id): id is number => id !== undefined));
+    const stored = await getTabs();
+    for (const key of Object.keys(stored)) {
+      const tabId = Number(key);
+      if (!openIds.has(tabId)) {
+        await deleteTab(tabId);
+      }
+    }
+  }
+}
+
+function isInternalUrl(url: string): boolean {
+  return url.startsWith("chrome://") || url.startsWith("chrome-extension://") || url.startsWith("about:");
 }

@@ -22,21 +22,23 @@ export class DecisionManager {
    * Respects safelist rules and autoClose config.
    */
   async processDecisions(
-    decisions: Array<{ tabId: number; decision: TabDecision; score: number }>
+    decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>
   ): Promise<TabDecisionResult[]> {
     const config = await getConfig();
     const results: TabDecisionResult[] = [];
 
-    for (const { tabId, decision, score } of decisions) {
+    for (const { tabId, decision, score, summary, insights } of decisions) {
       const tab = await getTab(tabId);
       if (!tab) {
         results.push({ tabId, decision, score, applied: false, reason: "tab_not_found" });
         continue;
       }
 
-      // Update decision + score on tab record
+      // Update decision + score + agent fields on tab record
       tab.decision = decision;
       tab.score = score;
+      if (summary !== undefined) tab.summary = summary;
+      if (insights !== undefined) tab.insights = insights;
       await setTab(tab);
 
       // Check safelist

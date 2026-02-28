@@ -10,7 +10,29 @@ final class NativeMessagingService {
 
     init(appState: AppState) {
         self.appState = appState
-        let r = MessageRouter()
+        let configManager = ConfigManager()
+        let runner = AgentRunner(
+            config: configManager.config.scoring,
+            openaiConfig: configManager.config.openai
+        )
+
+        // Wire arena progress callbacks to the UI state.
+        runner.arenaCallbacks = ArenaCallbacks(
+            onArenaStarted: { [weak appState] tabs in
+                DispatchQueue.main.async { appState?.arenaStarted(tabs: tabs) }
+            },
+            onAgentStarted: { [weak appState] tabId in
+                DispatchQueue.main.async { appState?.agentStarted(tabId: tabId) }
+            },
+            onAgentCompleted: { [weak appState] tabId, score, summary in
+                DispatchQueue.main.async { appState?.agentCompleted(tabId: tabId, score: score, summary: summary) }
+            },
+            onJudgeStarted: { [weak appState] in
+                DispatchQueue.main.async { appState?.judgeStarted() }
+            }
+        )
+
+        let r = MessageRouter(scorer: runner, configManager: configManager)
         r.onDecisions = { [weak appState] results, tabs in
             DispatchQueue.main.async {
                 appState?.applyDecisions(results, tabs: tabs)

@@ -13,10 +13,7 @@ let package = Package(
         // All implementation logic lives here so tests can import it.
         .target(
             name: "TabXHostLib",
-            path: "Sources/TabXHost",
-            linkerSettings: [
-                .linkedFramework("NaturalLanguage"),
-            ]
+            path: "Sources/TabXHost"
         ),
         // Thin entry-point that delegates to TabXHostLib.
         .executableTarget(

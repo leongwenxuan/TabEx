@@ -14,7 +14,7 @@ public final class ConfigManager: @unchecked Sendable {
 
     // MARK: - State
 
-    private(set) public var config: AppConfig
+    public var config: AppConfig
 
     public init() {
         self.config = ConfigManager.load()
