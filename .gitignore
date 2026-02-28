@@ -41,7 +41,7 @@ yarn-error.log*
 # Project-specific (generated / local)
 .claude/
 .seeds/
-.overstory/groups.json
+.overstory/
 _bmad-output/
 
 # Bun
