@@ -3,9 +3,10 @@ import PackageDescription
 
 let package = Package(
     name: "TabXHost",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [
         .executable(name: "tabx-host", targets: ["TabXHostRunner"]),
+        .executable(name: "TabXApp", targets: ["TabXApp"]),
         .library(name: "TabXHostLib", targets: ["TabXHostLib"]),
     ],
     targets: [
@@ -22,6 +23,12 @@ let package = Package(
             name: "TabXHostRunner",
             dependencies: ["TabXHostLib"],
             path: "Sources/TabXHostRunner"
+        ),
+        // macOS menu bar application.
+        .executableTarget(
+            name: "TabXApp",
+            dependencies: ["TabXHostLib"],
+            path: "Sources/TabXApp"
         ),
         .testTarget(
             name: "TabXHostTests",

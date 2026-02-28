@@ -29,6 +29,10 @@ public final class MessageRouter {
     private let bundleGen: any BundleGeneratorProtocol
     private let configManager: ConfigManager
 
+    /// Called on the messaging thread after each tab-update scoring round.
+    /// Receives the scored results and the original tab data.
+    public var onDecisions: (([TabResult], [TabData]) -> Void)?
+
     public init(
         scorer: any ScoringEngineProtocol = ScoringEngine(),
         bundleGen: any BundleGeneratorProtocol = BundleManager(),
@@ -53,6 +57,7 @@ public final class MessageRouter {
             // Persist bundle after each scoring round.
             let bundle = bundleGen.generateBundle()
             try? BundleStore.saveBundle(bundle)
+            onDecisions?(results, tabs)
             return OutgoingMessage(type: .decisions, results: results)
 
         case .requestBundle:
