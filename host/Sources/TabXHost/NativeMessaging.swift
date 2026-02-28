@@ -98,6 +98,13 @@ public final class NativeMessagingIO {
         case "config_update":
             return IncomingMessage(type: .configUpdate)
 
+        case "restore_session":
+            let sessionKey = dict["sessionKey"] as? String
+            return IncomingMessage(type: .restoreSession, sessionKey: sessionKey)
+
+        case "get_sessions":
+            return IncomingMessage(type: .getSessions)
+
         case "tab_update", "tab_data":
             guard let rawTabs = dict["tabs"] as? [[String: Any]] else {
                 return IncomingMessage(type: .tabUpdate, tabs: [])

@@ -24,11 +24,15 @@ export function applySettingsToForm(config: UserConfig): void {
   const autoClose = document.getElementById(
     "auto-close-toggle"
   ) as HTMLInputElement | null;
+  const autoRestore = document.getElementById(
+    "auto-restore-toggle"
+  ) as HTMLInputElement | null;
   const tabLimit = document.getElementById(
     "tab-limit"
   ) as HTMLInputElement | null;
 
   if (autoClose) autoClose.checked = config.autoClose;
+  if (autoRestore) autoRestore.checked = config.autoRestore;
   if (tabLimit) {
     tabLimit.value = config.tabLimit != null ? String(config.tabLimit) : "";
   }
@@ -82,6 +86,9 @@ export function bindSettingsEvents(): void {
   const autoClose = document.getElementById(
     "auto-close-toggle"
   ) as HTMLInputElement | null;
+  const autoRestore = document.getElementById(
+    "auto-restore-toggle"
+  ) as HTMLInputElement | null;
   const tabLimit = document.getElementById(
     "tab-limit"
   ) as HTMLInputElement | null;
@@ -97,6 +104,13 @@ export function bindSettingsEvents(): void {
     sendCommand({
       type: "update_config",
       config: { autoClose: autoClose.checked },
+    });
+  });
+
+  autoRestore?.addEventListener("change", () => {
+    sendCommand({
+      type: "update_config",
+      config: { autoRestore: autoRestore.checked },
     });
   });
 

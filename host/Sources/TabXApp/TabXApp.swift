@@ -40,7 +40,7 @@ struct MenuBarPanel: View {
             Divider()
             sectionContent
         }
-        .frame(width: 380)
+        .frame(width: 440)
         .background(.regularMaterial)
     }
 
@@ -144,7 +144,6 @@ struct BundleStatusBadge: View {
 struct ArenaView: View {
     let appState: AppState
     @State private var historyExpanded: Bool = false
-    @State private var historyFilter: ArenaHistoryFilter = .all
     @State private var selectedRound: ArenaRound? = nil
 
     var body: some View {
@@ -152,17 +151,22 @@ struct ArenaView: View {
             VStack(spacing: 0) {
                 arenaHeader
                 Divider()
-                if let round = selectedRound {
-                    historyDetailView(round)
-                } else if appState.contestants.isEmpty {
-                    emptyState
-                } else {
-                    contestantList
+                ScrollView {
+                    VStack(spacing: 0) {
+                        if let round = selectedRound {
+                            historyDetailContent(round)
+                        } else if appState.contestants.isEmpty {
+                            emptyState
+                        } else {
+                            contestantContent
+                        }
+                        if !appState.arenaHistory.isEmpty && selectedRound == nil {
+                            Divider()
+                            arenaHistorySection
+                        }
+                    }
                 }
-                if !appState.arenaHistory.isEmpty {
-                    Divider()
-                    arenaHistorySection
-                }
+                .frame(maxHeight: 600)
             }
             if case .judging = appState.arenaPhase {
                 JudgingOverlay(contestants: appState.contestants)
@@ -250,21 +254,18 @@ struct ArenaView: View {
         .padding(28)
     }
 
-    private var contestantList: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                ForEach(Array(appState.contestants.enumerated()), id: \.element.id) { rank, contestant in
-                    ContestantRow(rank: rank + 1, contestant: contestant)
-                }
+    private var contestantContent: some View {
+        LazyVStack(spacing: 2) {
+            ForEach(Array(appState.contestants.enumerated()), id: \.element.id) { rank, contestant in
+                ContestantRow(rank: rank + 1, contestant: contestant)
             }
-            .padding(.vertical, 6)
         }
-        .frame(maxHeight: 260)
+        .padding(.vertical, 6)
     }
 
     // MARK: - History detail
 
-    private func historyDetailView(_ round: ArenaRound) -> some View {
+    private func historyDetailContent(_ round: ArenaRound) -> some View {
         VStack(spacing: 0) {
             HStack {
                 Button {
@@ -283,20 +284,16 @@ struct ArenaView: View {
                 Text(round.timestamp, style: .relative)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-                categoryBadge(round.category)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             Divider()
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(Array(round.contestants.enumerated()), id: \.element.id) { rank, c in
-                        HistoryContestantRow(rank: rank + 1, contestant: c)
-                    }
+            LazyVStack(spacing: 2) {
+                ForEach(Array(round.contestants.enumerated()), id: \.element.id) { rank, c in
+                    HistoryContestantRow(rank: rank + 1, contestant: c)
                 }
-                .padding(.vertical, 6)
             }
-            .frame(maxHeight: 260)
+            .padding(.vertical, 6)
         }
     }
 
@@ -326,82 +323,30 @@ struct ArenaView: View {
             .buttonStyle(.plain)
 
             if historyExpanded {
-                historyFilterBar
                 Divider()
                 historyList
             }
         }
     }
 
-    private var historyFilterBar: some View {
-        HStack(spacing: 6) {
-            ForEach(ArenaHistoryFilter.allCases, id: \.self) { filter in
-                Button {
-                    historyFilter = filter
-                } label: {
-                    Text(filter.label)
-                        .font(.caption2)
-                        .fontWeight(historyFilter == filter ? .semibold : .regular)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(historyFilter == filter ? Color.accentColor.opacity(0.2) : Color.clear)
-                        .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 4)
-    }
-
     private var filteredHistory: [ArenaRound] {
-        switch historyFilter {
-        case .all: return appState.arenaHistory
-        case .auto: return appState.arenaHistory.filter { $0.category == .auto }
-        case .manual: return appState.arenaHistory.filter { $0.category == .manual }
-        }
+        appState.arenaHistory
     }
 
     private var historyList: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                ForEach(filteredHistory) { round in
-                    Button {
-                        selectedRound = round
-                    } label: {
-                        ArenaHistoryRow(round: round)
-                    }
-                    .buttonStyle(.plain)
+        LazyVStack(spacing: 2) {
+            ForEach(filteredHistory) { round in
+                Button {
+                    selectedRound = round
+                } label: {
+                    ArenaHistoryRow(round: round)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.vertical, 4)
         }
-        .frame(maxHeight: 160)
+        .padding(.vertical, 4)
     }
 
-    private func categoryBadge(_ category: ArenaCategory) -> some View {
-        Text(category.rawValue)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .foregroundStyle(category == .manual ? .orange : .blue)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background((category == .manual ? Color.orange : Color.blue).opacity(0.15))
-            .cornerRadius(4)
-    }
-}
-
-enum ArenaHistoryFilter: CaseIterable {
-    case all, auto, manual
-
-    var label: String {
-        switch self {
-        case .all: return "All"
-        case .auto: return "Auto"
-        case .manual: return "Manual"
-        }
-    }
 }
 
 struct ArenaHistoryRow: View {
@@ -410,18 +355,8 @@ struct ArenaHistoryRow: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(round.timestamp, style: .relative)
-                        .font(.caption)
-                    Text(round.category.rawValue)
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .foregroundStyle(round.category == .manual ? .orange : .blue)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background((round.category == .manual ? Color.orange : Color.blue).opacity(0.15))
-                        .cornerRadius(3)
-                }
+                Text(round.timestamp, style: .relative)
+                    .font(.caption)
                 HStack(spacing: 8) {
                     Text("\(round.tabCount) tabs")
                         .font(.caption2)
@@ -506,6 +441,8 @@ struct HistoryContestantRow: View {
         .background(.quinary.opacity(0.5))
         .cornerRadius(4)
         .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { openURL(contestant.url) }
     }
 
     private var decisionColor: Color {
@@ -554,6 +491,8 @@ struct ContestantRow: View {
         .background(.quinary.opacity(0.5))
         .cornerRadius(4)
         .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { openURL(contestant.url) }
         .animation(.easeInOut(duration: 0.3), value: contestant.status)
     }
 
@@ -811,7 +750,7 @@ struct TabListView: View {
                 }
                 .padding(.vertical, 6)
             }
-            .frame(maxHeight: 300)
+            .frame(maxHeight: 400)
         }
     }
 
@@ -875,6 +814,8 @@ struct TabRowView: View {
         .background(.quinary.opacity(0.5))
         .cornerRadius(4)
         .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { openURL(tab.url) }
     }
 
     private var decisionColor: Color {
@@ -914,7 +855,7 @@ struct ClosedTabsView: View {
                 }
                 .padding(.vertical, 6)
             }
-            .frame(maxHeight: 300)
+            .frame(maxHeight: 400)
         }
     }
 }
@@ -1083,4 +1024,11 @@ struct SettingsView: View {
         appState.addToSafelist(domain)
         newDomain = ""
     }
+}
+
+// MARK: - Helpers
+
+private func openURL(_ urlString: String) {
+    guard let url = URL(string: urlString), !urlString.isEmpty else { return }
+    NSWorkspace.shared.open(url)
 }

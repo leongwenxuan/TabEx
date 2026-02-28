@@ -158,6 +158,43 @@ public final class BundleStore {
         return try? dec.decode(ScoringSnapshot.self, from: data)
     }
 
+    // MARK: - Raw tab data persistence
+
+    public static var tabsURL: URL {
+        storeDirectory.appendingPathComponent("latest-tabs.json")
+    }
+
+    public struct TabSnapshot: Codable {
+        public let tabs: [TabData]
+        public let timestamp: Date
+
+        public init(tabs: [TabData]) {
+            self.tabs = tabs
+            self.timestamp = Date()
+        }
+    }
+
+    public static func saveTabs(_ tabs: [TabData]) {
+        do {
+            try ensureDirectory()
+            let snapshot = TabSnapshot(tabs: tabs)
+            let enc = JSONEncoder()
+            enc.dateEncodingStrategy = .iso8601
+            enc.outputFormatting = [.sortedKeys]
+            let data = try enc.encode(snapshot)
+            try data.write(to: tabsURL, options: .atomic)
+        } catch {
+            fputs("[TabX] Failed to save tabs: \(error)\n", stderr)
+        }
+    }
+
+    public static func loadTabs() -> TabSnapshot? {
+        guard let data = try? Data(contentsOf: tabsURL) else { return nil }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        return try? dec.decode(TabSnapshot.self, from: data)
+    }
+
     // MARK: - Arena history persistence
 
     private static let arenaHistoryLimit = 50

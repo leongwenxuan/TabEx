@@ -7,6 +7,9 @@ public final class BundleManager {
     private var latestResults: [TabResult] = []
     private var gitContext: GitContext
     private let config: ScoringConfig
+    /// Configured repo path for git detection. When set, `GitContext.detect(from:)` uses
+    /// this instead of the process working directory (which is wrong when Chrome launches us).
+    private let configuredRepoPath: String?
 
     /// URL of the context bundle JSON written to disk (for CLI / agent consumption).
     public static var bundleFileURL: URL {
@@ -14,9 +17,10 @@ public final class BundleManager {
         return support.appendingPathComponent("TabXHost/context-bundle.json")
     }
 
-    public init(config: ScoringConfig = .default) {
+    public init(config: ScoringConfig = .default, repoPath: String? = nil) {
         self.config = config
-        self.gitContext = GitContext.detect()
+        self.configuredRepoPath = repoPath
+        self.gitContext = GitContext.detect(from: repoPath ?? FileManager.default.currentDirectoryPath)
     }
 
     // MARK: - Updating state
@@ -55,7 +59,7 @@ public final class BundleManager {
     /// Store the latest scoring results so the bundle can reflect surviving tabs.
     public func updateResults(_ results: [TabResult]) {
         latestResults = results
-        gitContext = GitContext.detect()   // refresh git context on each scoring round
+        gitContext = GitContext.detect(from: configuredRepoPath ?? FileManager.default.currentDirectoryPath)
     }
 
     // MARK: - Bundle generation
@@ -105,6 +109,26 @@ public final class BundleManager {
 
         persistBundle(bundle)
         return bundle
+    }
+
+    // MARK: - Snapshot / Restore
+
+    /// Returns a copy of the manager's private state for session persistence.
+    public func snapshot() -> BundleManagerState {
+        BundleManagerState(
+            pageRecords: pageRecords,
+            latestResults: latestResults,
+            urlForTabId: urlForTabId,
+            titleForTabId: titleForTabId
+        )
+    }
+
+    /// Replaces all private state from a previously saved snapshot.
+    public func restore(_ state: BundleManagerState) {
+        pageRecords = state.pageRecords
+        latestResults = state.latestResults
+        urlForTabId = state.urlForTabId
+        titleForTabId = state.titleForTabId
     }
 
     // MARK: - Side tables (updated during ingestion)

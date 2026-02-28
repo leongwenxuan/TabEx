@@ -31,3 +31,5 @@ export type {
   PopupStateMessage,
   PopupCommand,
 } from "./messages.js";
+
+export type { SessionSwitchInfo } from "./session.js";

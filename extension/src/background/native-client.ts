@@ -4,6 +4,7 @@ import type {
   ConnectionStatus,
   ContextBundle,
   TabDecision,
+  SessionSwitchInfo,
 } from "../shared/types.js";
 import { setConnectionStatus } from "./storage.js";
 
@@ -12,8 +13,11 @@ const PING_INTERVAL_MS = 30_000;
 const RECONNECT_DELAY_MS = 5_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
+type DecisionContext = { branchSwitch: boolean };
+
 type DecisionCallback = (
-  decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>
+  decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>,
+  context?: DecisionContext
 ) => void;
 
 type BundleCallback = (bundle: ContextBundle) => void;
@@ -30,6 +34,8 @@ type HostTabPayload = {
   isActive: boolean;
 };
 
+type SessionSwitchCallback = (info: SessionSwitchInfo) => void;
+
 type DecisionPayload = { tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] };
 
 export class NativeMessagingClient {
@@ -39,11 +45,16 @@ export class NativeMessagingClient {
   private reconnectAttempts = 0;
   private onDecision: DecisionCallback;
   private onBundle: BundleCallback;
+  private onSessionSwitch: SessionSwitchCallback | null = null;
   private pendingBundleResolves: Array<(b: ContextBundle) => void> = [];
 
   constructor(onDecision: DecisionCallback, onBundle: BundleCallback) {
     this.onDecision = onDecision;
     this.onBundle = onBundle;
+  }
+
+  setSessionSwitchHandler(handler: SessionSwitchCallback): void {
+    this.onSessionSwitch = handler;
   }
 
   connect(): void {
@@ -142,6 +153,10 @@ export class NativeMessagingClient {
     });
   }
 
+  sendRestoreSession(sessionKey: string): void {
+    this.send({ type: "restore_session", sessionKey } as unknown as HostRequest);
+  }
+
   getStatus(): ConnectionStatus {
     return this.port !== null ? "connected" : "disconnected";
   }
@@ -176,11 +191,17 @@ export class NativeMessagingClient {
         break;
 
       // Current host response shape
-      case "decisions":
+      case "decisions": {
+        const hasBranchSwitch = isRecord(msg.sessionSwitch);
         if (Array.isArray(msg.results)) {
-          this.onDecision(parseDecisions(msg.results));
+          this.onDecision(
+            parseDecisions(msg.results),
+            hasBranchSwitch ? { branchSwitch: true } : undefined
+          );
         }
+        this.parseSessionSwitch(msg);
         break;
+      }
 
       // Legacy response shape
       case "context_bundle":
@@ -210,6 +231,20 @@ export class NativeMessagingClient {
       default:
         console.warn("[TabX] Unknown message from host:", msg);
     }
+  }
+
+  private parseSessionSwitch(msg: Record<string, unknown>): void {
+    if (!this.onSessionSwitch) return;
+    const sw = msg.sessionSwitch;
+    if (!isRecord(sw)) return;
+    const info: SessionSwitchInfo = {
+      fromBranch: typeof sw.fromBranch === "string" ? sw.fromBranch : null,
+      toBranch: typeof sw.toBranch === "string" ? sw.toBranch : null,
+      repoPath: typeof sw.repoPath === "string" ? sw.repoPath : null,
+      hasSavedSession: typeof sw.hasSavedSession === "boolean" ? sw.hasSavedSession : false,
+      incomingKey: typeof sw.incomingKey === "string" ? sw.incomingKey : null,
+    };
+    this.onSessionSwitch(info);
   }
 
   private resolveBundle(rawBundle: unknown): void {

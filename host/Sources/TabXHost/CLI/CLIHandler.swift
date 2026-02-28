@@ -34,6 +34,12 @@ public struct CLIHandler {
             return handleConfig()
         case "--set-key":
             return handleSetKey(arguments: Array(arguments.dropFirst()))
+        case "--set-repo":
+            return handleSetRepo(arguments: Array(arguments.dropFirst()))
+        case "--sessions":
+            return handleSessions()
+        case "--session":
+            return handleSession(arguments: Array(arguments.dropFirst()))
         case "--version":
             return handleVersion()
         case "--help", "-h":
@@ -65,7 +71,8 @@ public struct CLIHandler {
         }
 
         // No bundle on disk — generate from current git context.
-        let git = GitContext.detect()
+        let detectFrom = configManager.config.repoPath ?? FileManager.default.currentDirectoryPath
+        let git = GitContext.detect(from: detectFrom)
         let bundle = ContextBundle(
             generatedAt: Date(),
             gitBranch: git.branch,
@@ -89,7 +96,8 @@ public struct CLIHandler {
     }
 
     private func handleStatus() -> Int32 {
-        let git = GitContext.detect()
+        let detectFrom = configManager.config.repoPath ?? FileManager.default.currentDirectoryPath
+        let git = GitContext.detect(from: detectFrom)
         let bundleExists = FileManager.default.fileExists(atPath: BundleStore.bundleURL.path)
         let branch = git.branch ?? "(detached)"
         let repo = git.repoPath ?? "(none)"
@@ -105,6 +113,9 @@ public struct CLIHandler {
         print("API Key: \(apiKeyStatus)")
         print("Models:  agent=\(agentModel), judge=\(judgeModel)")
         print("Config:  \(ConfigManager.configURL.path)")
+        if let rp = configManager.config.repoPath {
+            print("Watched: \(rp)")
+        }
         return 0
     }
 
@@ -124,6 +135,33 @@ public struct CLIHandler {
         }
     }
 
+    private mutating func handleSetRepo(arguments: [String]) -> Int32 {
+        guard let path = arguments.first, !path.isEmpty else {
+            fputs("Usage: tabx-host --set-repo <path-to-git-repo>\n", stderr)
+            return 1
+        }
+        let resolved = (path as NSString).expandingTildeInPath
+        // Verify the path is a git repo
+        let gitDir = (resolved as NSString).appendingPathComponent(".git")
+        guard FileManager.default.fileExists(atPath: gitDir) else {
+            fputs("Error: no .git directory found at \(resolved)\n", stderr)
+            return 1
+        }
+        configManager.config.repoPath = resolved
+        do {
+            try configManager.save()
+            print("Repo path saved: \(resolved)")
+            let git = GitContext.detect(from: resolved)
+            if let branch = git.branch {
+                print("Current branch: \(branch)")
+            }
+            return 0
+        } catch {
+            fputs("Error saving config: \(error.localizedDescription)\n", stderr)
+            return 1
+        }
+    }
+
     private func handleConfig() -> Int32 {
         print(configManager.prettyJSON())
         return 0
@@ -131,6 +169,46 @@ public struct CLIHandler {
 
     private func handleVersion() -> Int32 {
         print("tabx-host \(configManager.config.version)")
+        return 0
+    }
+
+    private func handleSessions() -> Int32 {
+        let index = SessionStore.loadIndex()
+        if index.isEmpty {
+            print("No saved sessions.")
+            return 0
+        }
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .iso8601
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? enc.encode(index), let json = String(data: data, encoding: .utf8) {
+            print(json)
+        } else {
+            fputs("Error: failed to encode session index.\n", stderr)
+            return 1
+        }
+        return 0
+    }
+
+    private func handleSession(arguments: [String]) -> Int32 {
+        guard let keyStr = arguments.first, !keyStr.isEmpty else {
+            fputs("Usage: tabx-host --session <key>\n", stderr)
+            return 1
+        }
+        let key = WorkspaceKey(rawValue: keyStr)
+        guard let session = SessionStore.load(key: key) else {
+            fputs("No session found for key: \(keyStr)\n", stderr)
+            return 1
+        }
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .iso8601
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? enc.encode(session), let json = String(data: data, encoding: .utf8) {
+            print(json)
+        } else {
+            fputs("Error: failed to encode session.\n", stderr)
+            return 1
+        }
         return 0
     }
 
@@ -146,6 +224,9 @@ public struct CLIHandler {
           --status               Print current status (branch, repo, agent mode, API key)
           --config               Print the current configuration as JSON
           --set-key <key>        Save an OpenAI API key to ~/.tabx/config.json
+          --set-repo <path>      Set the git repo path for branch detection
+          --sessions             List all saved branch sessions
+          --session <key>        Print a saved session as JSON
           --version              Print version information
           --help                 Show this help message
         """

@@ -22,9 +22,11 @@ export class DecisionManager {
    * Respects safelist rules and autoClose config.
    */
   async processDecisions(
-    decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>
+    decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>,
+    options?: { forceClose?: boolean }
   ): Promise<TabDecisionResult[]> {
     const config = await getConfig();
+    const forceClose = options?.forceClose ?? false;
     const results: TabDecisionResult[] = [];
 
     for (const { tabId, decision, score, summary, insights } of decisions) {
@@ -47,8 +49,14 @@ export class DecisionManager {
         continue;
       }
 
-      // Apply auto-close if enabled and decision is close
-      if (decision === "close" && config.autoClose) {
+      // Apply auto-close if enabled (or forced on branch switch) and decision is close
+      if (decision === "close" && (config.autoClose || forceClose)) {
+        // Guard: never close the last tab in a window — Chrome exits if all tabs are removed.
+        const safe = await this.canSafelyClose(tabId);
+        if (!safe) {
+          results.push({ tabId, decision, score, applied: false, reason: "last_tab_in_window" });
+          continue;
+        }
         const record: ClosedTabRecord = {
           tabId: tab.tabId,
           url: tab.url,
@@ -90,5 +98,16 @@ export class DecisionManager {
     if (!tab) return;
     tab.decision = undefined;
     await setTab(tab);
+  }
+
+  /** Returns false if closing this tab would leave its window with zero tabs. */
+  private async canSafelyClose(tabId: number): Promise<boolean> {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      const windowTabs = await chrome.tabs.query({ windowId: tab.windowId });
+      return windowTabs.length > 1;
+    } catch {
+      return false;
+    }
   }
 }

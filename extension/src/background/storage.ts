@@ -5,6 +5,7 @@ import type {
   UserConfig,
   ConnectionStatus,
   DontCloseRule,
+  SessionSwitchInfo,
 } from "../shared/types.js";
 
 const MAX_CLOSED_TABS = 50;
@@ -13,6 +14,7 @@ const DEFAULT_CONFIG: UserConfig = {
   tabLimit: null,
   dontCloseRules: [],
   autoClose: false,
+  autoRestore: true,
   scoringEnabled: true,
 };
 
@@ -23,6 +25,7 @@ export async function getStorage(): Promise<StorageSchema> {
     "closedTabs",
     "connectionStatus",
     "lastBundleAt",
+    "pendingRestore",
   ]);
   return {
     config: (result["config"] as UserConfig | undefined) ?? DEFAULT_CONFIG,
@@ -30,6 +33,7 @@ export async function getStorage(): Promise<StorageSchema> {
     closedTabs: (result["closedTabs"] as ClosedTabRecord[] | undefined) ?? [],
     connectionStatus: (result["connectionStatus"] as ConnectionStatus | undefined) ?? "disconnected",
     lastBundleAt: (result["lastBundleAt"] as number | null | undefined) ?? null,
+    pendingRestore: (result["pendingRestore"] as SessionSwitchInfo | null | undefined) ?? null,
   };
 }
 
@@ -122,6 +126,15 @@ export async function removeDontCloseRule(ruleId: string): Promise<void> {
   const config = await getConfig();
   config.dontCloseRules = config.dontCloseRules.filter((r) => r.id !== ruleId);
   await setConfig(config);
+}
+
+export async function getPendingRestore(): Promise<SessionSwitchInfo | null> {
+  const result = await chrome.storage.local.get("pendingRestore");
+  return (result["pendingRestore"] as SessionSwitchInfo | null | undefined) ?? null;
+}
+
+export async function setPendingRestore(info: SessionSwitchInfo | null): Promise<void> {
+  await chrome.storage.local.set({ pendingRestore: info });
 }
 
 export function matchesDontCloseRule(

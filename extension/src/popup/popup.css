@@ -543,6 +543,46 @@ body {
   opacity: 1;
 }
 
+/* ── Restore banner ──────────────────────────────────── */
+
+.restore-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 8px 8px 4px;
+  background: rgba(91, 106, 240, 0.12);
+  border: 1px solid rgba(91, 106, 240, 0.25);
+  border-radius: var(--radius);
+}
+
+.restore-banner-text {
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.restore-banner-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.restore-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.restore-dismiss-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
 /* ── Utility ─────────────────────────────────────────── */
 
 .hidden {

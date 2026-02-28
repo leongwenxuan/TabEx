@@ -15,10 +15,12 @@ import { DecisionManager } from "./decision-manager.js";
 import { UndoManager } from "./undo-manager.js";
 import {
   getStorage,
+  getConfig,
   updateConfig,
   addDontCloseRule,
   removeDontCloseRule,
   setConnectionStatus,
+  setPendingRestore,
 } from "./storage.js";
 import type {
   ContentReadingMessage,
@@ -35,6 +37,21 @@ const nativeClient = new NativeMessagingClient(
     // Bundle received — no action needed here; resolved via requestContextBundle()
   }
 );
+
+nativeClient.setSessionSwitchHandler(async (info) => {
+  if (!info.hasSavedSession) return;
+
+  const config = await getConfig();
+  if (config.autoRestore && info.incomingKey) {
+    // Auto-restore: send restore command immediately, no banner needed
+    nativeClient.sendRestoreSession(info.incomingKey);
+    await setPendingRestore(null);
+  } else {
+    // Manual restore: show the banner in the popup
+    await setPendingRestore(info);
+  }
+  await broadcastPopupState();
+});
 
 const decisionManager = new DecisionManager(async (tabId: number) => {
   try {
@@ -53,9 +70,11 @@ const tabTracker = new TabTracker(async (tabs) => {
 // ─── Decision handler (called from native client) ─────────────────────────────
 
 async function handleDecisions(
-  decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>
+  decisions: Array<{ tabId: number; decision: TabDecision; score: number; summary?: string; insights?: string[] }>,
+  context?: { branchSwitch: boolean }
 ): Promise<void> {
-  await decisionManager.processDecisions(decisions);
+  const forceClose = context?.branchSwitch ?? false;
+  await decisionManager.processDecisions(decisions, { forceClose });
   await broadcastPopupState();
 }
 
@@ -160,6 +179,21 @@ async function handlePopupCommand(
       break;
     }
 
+    case "restore_session": {
+      nativeClient.sendRestoreSession(cmd.sessionKey);
+      await setPendingRestore(null);
+      sendResponse({ ok: true });
+      await broadcastPopupState();
+      break;
+    }
+
+    case "dismiss_restore": {
+      await setPendingRestore(null);
+      sendResponse({ ok: true });
+      await broadcastPopupState();
+      break;
+    }
+
     default:
       sendResponse({ ok: false, error: "unknown_command" });
   }
@@ -176,6 +210,7 @@ async function buildPopupState(): Promise<PopupStateMessage> {
     closedTabs: storage.closedTabs,
     connectionStatus: storage.connectionStatus,
     config: storage.config,
+    pendingRestore: storage.pendingRestore,
   };
 }
 

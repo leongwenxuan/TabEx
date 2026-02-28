@@ -62,14 +62,24 @@ public struct GitContext: Sendable {
     @discardableResult
     private static func git(_ repoPath: String, args: [String]) -> String {
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        proc.arguments = ["git", "-C", repoPath] + args
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        proc.arguments = ["-C", repoPath, "--no-pager"] + args
+        proc.environment = [
+            "PATH": "/usr/bin:/usr/local/bin",
+            "GIT_TERMINAL_PROMPT": "0",
+        ]
         let pipe = Pipe()
         proc.standardOutput = pipe
-        proc.standardError = Pipe()
-        try? proc.run()
+        proc.standardError = FileHandle.nullDevice
+        do {
+            try proc.run()
+        } catch {
+            return ""
+        }
+        // Read data BEFORE waitUntilExit to avoid pipe-buffer deadlock.
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         proc.waitUntilExit()
-        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
 

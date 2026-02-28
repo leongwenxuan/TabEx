@@ -2,6 +2,7 @@
 
 import type { TabDecision, TabInfo, ReadingData, ClosedTabRecord } from "./tab.js";
 import type { ContextBundle, ConnectionStatus, UserConfig, DontCloseRule } from "./settings.js";
+import type { SessionSwitchInfo } from "./session.js";
 
 // Native messaging protocol messages (extension → host)
 export type HostRequestType =
@@ -73,6 +74,7 @@ export interface PopupStateMessage {
   closedTabs: ClosedTabRecord[];
   connectionStatus: ConnectionStatus;
   config: UserConfig;
+  pendingRestore: SessionSwitchInfo | null;
 }
 
 // Popup → background commands
@@ -83,4 +85,6 @@ export type PopupCommand =
   | { type: "remove_dont_close_rule"; ruleId: string }
   | { type: "get_state" }
   | { type: "get_context_bundle" }
-  | { type: "dismiss_decision"; tabId: number };
+  | { type: "dismiss_decision"; tabId: number }
+  | { type: "restore_session"; sessionKey: string }
+  | { type: "dismiss_restore" };

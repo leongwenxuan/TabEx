@@ -13,6 +13,7 @@ import type { ContextBundle, PopupCommand, PopupStateMessage } from "../shared/t
 import { renderTabList, renderClosedList } from "./components/tab-list.js";
 import { renderStatusBar } from "./components/status-bar.js";
 import { applySettingsToForm, bindSettingsEvents } from "./components/settings-panel.js";
+import { renderRestoreBanner } from "./components/restore-banner.js";
 
 // ─── Messaging helpers ────────────────────────────────────────────────────────
 
@@ -30,6 +31,12 @@ function applyState(state: PopupStateMessage): void {
   const label = document.getElementById("status-label");
   if (badge && label) {
     renderStatusBar(badge, label, state.connectionStatus);
+  }
+
+  // Restore banner (before tab list)
+  const restoreBanner = document.getElementById("restore-banner-container");
+  if (restoreBanner) {
+    renderRestoreBanner(restoreBanner, state.pendingRestore);
   }
 
   // Open tabs

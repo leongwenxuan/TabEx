@@ -7,6 +7,8 @@ public enum MessageType: String, Codable {
     case requestBundle = "request_bundle"
     case ping = "ping"
     case configUpdate = "config_update"
+    case restoreSession = "restore_session"
+    case getSessions = "get_sessions"
 }
 
 public struct TabData: Codable, Sendable {
@@ -49,11 +51,18 @@ public struct IncomingMessage: Codable, Sendable {
     public let type: MessageType
     public let tabs: [TabData]?
     public let config: ScoringConfig?
+    public let sessionKey: String?
 
-    public init(type: MessageType, tabs: [TabData]? = nil, config: ScoringConfig? = nil) {
+    public init(
+        type: MessageType,
+        tabs: [TabData]? = nil,
+        config: ScoringConfig? = nil,
+        sessionKey: String? = nil
+    ) {
         self.type = type
         self.tabs = tabs
         self.config = config
+        self.sessionKey = sessionKey
     }
 }
 
@@ -98,6 +107,30 @@ public enum OutgoingMessageType: String, Codable, Sendable {
     case bundle
     case pong
     case error
+    case sessionSwitch = "session_switch"
+    case sessions
+}
+
+public struct SessionSwitchPayload: Codable, Sendable {
+    public let fromBranch: String?
+    public let toBranch: String?
+    public let repoPath: String?
+    public let hasSavedSession: Bool
+    public let incomingKey: String?
+
+    public init(
+        fromBranch: String?,
+        toBranch: String?,
+        repoPath: String?,
+        hasSavedSession: Bool,
+        incomingKey: String?
+    ) {
+        self.fromBranch = fromBranch
+        self.toBranch = toBranch
+        self.repoPath = repoPath
+        self.hasSavedSession = hasSavedSession
+        self.incomingKey = incomingKey
+    }
 }
 
 public struct OutgoingMessage: Codable, Sendable {
@@ -105,16 +138,22 @@ public struct OutgoingMessage: Codable, Sendable {
     public let results: [TabResult]?
     public let bundle: ContextBundle?
     public let error: String?
+    public let sessionSwitch: SessionSwitchPayload?
+    public let sessions: [SessionIndexEntry]?
 
     public init(
         type: OutgoingMessageType,
         results: [TabResult]? = nil,
         bundle: ContextBundle? = nil,
-        error: String? = nil
+        error: String? = nil,
+        sessionSwitch: SessionSwitchPayload? = nil,
+        sessions: [SessionIndexEntry]? = nil
     ) {
         self.type = type
         self.results = results
         self.bundle = bundle
         self.error = error
+        self.sessionSwitch = sessionSwitch
+        self.sessions = sessions
     }
 }

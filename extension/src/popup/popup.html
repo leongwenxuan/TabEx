@@ -28,6 +28,7 @@
 
     <!-- ── Open tabs panel ───────────────────────────── -->
     <div id="panel-open" class="panel active">
+      <div id="restore-banner-container" class="hidden"></div>
       <div class="tab-list" id="tabs-list"></div>
     </div>
 
@@ -41,6 +42,11 @@
       <div class="settings-group">
         <label class="settings-label" for="auto-close-toggle">Auto-close flagged tabs</label>
         <input type="checkbox" id="auto-close-toggle" class="toggle" />
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label" for="auto-restore-toggle">Auto-restore branch sessions</label>
+        <input type="checkbox" id="auto-restore-toggle" class="toggle" />
       </div>
 
       <div class="settings-group">
