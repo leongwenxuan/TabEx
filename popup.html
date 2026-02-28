@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TabX</title>
+  <link rel="stylesheet" href="dist/popup.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="header-title">
+        <span class="logo">⬡</span>
+        <h1>TabX</h1>
+      </div>
+      <div id="connection-status" class="status-badge status-disconnected" title="Native host connection status">
+        ● Disconnected
+      </div>
+    </header>
+
+    <nav class="tabs-nav">
+      <button class="tab-btn active" data-tab="open">Open Tabs</button>
+      <button class="tab-btn" data-tab="closed">Recently Closed</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- Open Tabs Panel -->
+    <section id="panel-open" class="panel active">
+      <div id="tabs-list" class="tab-list">
+        <div class="empty-state">Loading tabs...</div>
+      </div>
+    </section>
+
+    <!-- Recently Closed Panel -->
+    <section id="panel-closed" class="panel">
+      <div id="closed-list" class="tab-list">
+        <div class="empty-state">No recently closed tabs.</div>
+      </div>
+    </section>
+
+    <!-- Settings Panel -->
+    <section id="panel-settings" class="panel">
+      <div class="settings-group">
+        <label class="settings-label" for="auto-close-toggle">
+          Auto-close on host decision
+        </label>
+        <input type="checkbox" id="auto-close-toggle" class="toggle" />
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label" for="tab-limit-input">
+          Tab limit (0 = no limit)
+        </label>
+        <input
+          type="number"
+          id="tab-limit-input"
+          class="number-input"
+          min="0"
+          max="500"
+          placeholder="0"
+        />
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label">Don't-close rules</label>
+        <div id="rules-list" class="rules-list"></div>
+        <div class="add-rule-form">
+          <select id="rule-type" class="rule-type-select">
+            <option value="domain">Domain</option>
+            <option value="url_pattern">URL pattern</option>
+          </select>
+          <input
+            type="text"
+            id="rule-value"
+            class="rule-value-input"
+            placeholder="e.g. github.com or https://docs.*/api/*"
+          />
+          <button id="add-rule-btn" class="btn btn-secondary">Add</button>
+        </div>
+      </div>
+
+      <button id="save-settings-btn" class="btn btn-primary save-btn">
+        Save Settings
+      </button>
+    </section>
+  </div>
+  <script type="module" src="dist/popup.js"></script>
+</body>
+</html>

@@ -1,17 +1,24 @@
 {
-  "name": "tabx-extension",
+  "name": "tabx-chrome-extension",
   "version": "0.1.0",
-  "description": "TabX Chrome Extension - Context-aware tab lifecycle and agent handoff",
+  "description": "TabX - Relevance-based tab lifecycle manager with agent handoff",
+  "private": true,
   "scripts": {
-    "build": "bun run build:ext",
-    "build:ext": "tsc --noEmit && bun run bundle",
-    "bundle": "bun build src/background/service-worker.ts --outdir dist/background --target browser && bun build src/content/content-script.ts --outdir dist/content --target browser && bun build src/popup/popup.ts --outdir dist/popup --target browser",
-    "lint": "bunx tsc --noEmit",
-    "typecheck": "bunx tsc --noEmit",
-    "test": "bun test tests/"
+    "build": "bun run build:clean && bun run build:bundle",
+    "build:clean": "rm -rf dist",
+    "build:bundle": "bun run scripts/build.ts",
+    "dev": "bun run scripts/build.ts --watch",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
-    "typescript": "^5.4.0"
+    "@types/bun": "^1.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
   }
 }
