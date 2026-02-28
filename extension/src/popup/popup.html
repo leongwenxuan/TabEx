@@ -7,60 +7,80 @@
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <div class="header">
-    <span class="logo">TabX</span>
-    <span class="status" id="status-badge" data-status="disconnected">●</span>
-    <span class="status-label" id="status-label">disconnected</span>
-  </div>
-
-  <div class="tabs-section">
-    <div class="section-title">Open Tabs</div>
-    <div id="tabs-list" class="tab-list"></div>
-  </div>
-
-  <div class="section-divider"></div>
-
-  <div class="closed-section">
-    <div class="section-title">Recently Closed <span class="hint">(undo)</span></div>
-    <div id="closed-list" class="tab-list"></div>
-    <div id="no-closed" class="empty-hint hidden">No recently closed tabs.</div>
-  </div>
-
-  <div class="section-divider"></div>
-
-  <div class="controls-section">
-    <div class="section-title">Controls</div>
-
-    <label class="control-row">
-      <span>Auto-close flagged tabs</span>
-      <input type="checkbox" id="auto-close-toggle" />
-    </label>
-
-    <label class="control-row">
-      <span>Tab limit</span>
-      <input type="number" id="tab-limit" min="1" max="999" placeholder="none" class="small-input" />
-    </label>
-
-    <div class="safelist-area">
-      <div class="safelist-title">Don't-close rules</div>
-      <div id="safelist-rules"></div>
-      <div class="add-rule-row">
-        <input type="text" id="new-rule-value" placeholder="domain or url prefix" class="rule-input" />
-        <select id="new-rule-type" class="rule-type-select">
-          <option value="domain">domain</option>
-          <option value="url_prefix">url prefix</option>
-          <option value="url_pattern">regex</option>
-        </select>
-        <button id="add-rule-btn" class="btn-small">Add</button>
+  <div id="app">
+    <!-- ── Header ─────────────────────────────────────── -->
+    <div class="header">
+      <div class="header-title">
+        <span class="logo">TabX</span>
+      </div>
+      <div>
+        <span class="status status-disconnected" id="status-badge">●</span>
+        <span class="status-label" id="status-label">disconnected</span>
       </div>
     </div>
 
-    <button id="get-bundle-btn" class="btn-primary">Get Context Bundle</button>
-  </div>
+    <!-- ── Nav tabs ───────────────────────────────────── -->
+    <nav class="tabs-nav">
+      <button class="tab-btn active" data-panel="panel-open">Open</button>
+      <button class="tab-btn" data-panel="panel-closed">Closed</button>
+      <button class="tab-btn" data-panel="panel-settings">Settings</button>
+    </nav>
 
-  <div id="bundle-output" class="bundle-area hidden">
-    <div class="section-title">Context Bundle</div>
-    <pre id="bundle-content" class="bundle-pre"></pre>
+    <!-- ── Open tabs panel ───────────────────────────── -->
+    <div id="panel-open" class="panel active">
+      <div class="tab-list" id="tabs-list"></div>
+    </div>
+
+    <!-- ── Recently closed panel ─────────────────────── -->
+    <div id="panel-closed" class="panel">
+      <div class="tab-list" id="closed-list"></div>
+    </div>
+
+    <!-- ── Settings panel ────────────────────────────── -->
+    <div id="panel-settings" class="panel">
+      <div class="settings-group">
+        <label class="settings-label" for="auto-close-toggle">Auto-close flagged tabs</label>
+        <input type="checkbox" id="auto-close-toggle" class="toggle" />
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label" for="tab-limit">Tab limit</label>
+        <input
+          type="number"
+          id="tab-limit"
+          class="number-input"
+          min="1"
+          max="999"
+          placeholder="none"
+        />
+      </div>
+
+      <div class="settings-group">
+        <span class="settings-label">Don't-close rules</span>
+        <div class="rules-list" id="safelist-rules"></div>
+        <div class="add-rule-form">
+          <select id="new-rule-type" class="rule-type-select">
+            <option value="domain">domain</option>
+            <option value="url_prefix">url prefix</option>
+            <option value="url_pattern">regex</option>
+          </select>
+          <input
+            type="text"
+            id="new-rule-value"
+            class="rule-value-input"
+            placeholder="e.g. github.com"
+          />
+          <button id="add-rule-btn" class="btn btn-secondary">Add</button>
+        </div>
+      </div>
+
+      <button id="get-bundle-btn" class="btn btn-primary save-btn">Get Context Bundle</button>
+    </div>
+
+    <!-- ── Bundle output ─────────────────────────────── -->
+    <div id="bundle-output" class="bundle-area hidden">
+      <pre id="bundle-content" class="bundle-pre"></pre>
+    </div>
   </div>
 
   <script type="module" src="popup.js"></script>
