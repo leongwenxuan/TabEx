@@ -1,0 +1,9 @@
+{
+  "name": "com.tabx.host",
+  "description": "TabX native host for tab scoring and context bundling",
+  "path": "/usr/local/bin/tabx-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
+  ]
+}
