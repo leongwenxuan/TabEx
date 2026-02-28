@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "TabX",
+  "version": "0.1.0",
+  "description": "Relevance-based tab lifecycle manager with agent handoff for developers",
+  "permissions": ["tabs", "activeTab", "nativeMessaging", "storage", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content/content-script.ts"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "TabX"
+  }
+}

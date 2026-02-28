@@ -8,11 +8,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
-    "exactOptionalPropertyTypes": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": ["chrome", "bun"]
+    "types": ["chrome"]
   },
-  "include": ["src/**/*", "scripts/**/*", "tests/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
