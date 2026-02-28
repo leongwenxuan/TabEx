@@ -103,10 +103,9 @@ public final class ScoringEngine {
         var count = 0
         for bt in branchTokens {
             for tt in tabTokens {
-                if let dist = embedder.distance(between: bt, and: tt, distanceType: .cosine) {
-                    total += 1.0 - Double(dist)
-                    count += 1
-                }
+                let dist = embedder.distance(between: bt, and: tt, distanceType: .cosine)
+                total += 1.0 - Double(dist)
+                count += 1
             }
         }
         guard count > 0 else { return 0.3 }
