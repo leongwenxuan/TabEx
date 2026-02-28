@@ -2,192 +2,128 @@ import Foundation
 
 /// Handles command-line invocations of the tabx-host binary.
 ///
-/// Supported flags:
-///   --bundle          Print the latest saved context bundle (JSON)
-///   --bundle-md       Print the latest saved context bundle (Markdown)
-///   --status          Print host status and last-scored info
-///   --config          Print current AppConfig as JSON
-///   --config-set KEY=VALUE  Update a flat config key
-///   --version         Print version string
-///   --help            Print usage
+/// Supported commands:
+///   --bundle     Generate and print the context bundle (JSON by default, Markdown with --markdown)
+///   --status     Print a one-line status summary
+///   --config     Print the current configuration as JSON
+///   --version    Print the version string
+///   --help       Print usage information
 public struct CLIHandler {
-    public static let version = "1.0.0"
 
     private let configManager: ConfigManager
-    private let bundleStore: BundleStore
-    private let formatter: BundleFormatter
 
-    public init(
-        configManager: ConfigManager = .shared,
-        bundleStore: BundleStore = .shared
-    ) {
+    public init(configManager: ConfigManager = ConfigManager()) {
         self.configManager = configManager
-        self.bundleStore = bundleStore
-        self.formatter = BundleFormatter()
     }
 
-    // MARK: - Entry point
-
-    /// Returns exit code (0 = success, 1 = error).
+    /// Parses `CommandLine.arguments` (excluding the binary name) and runs the matching command.
+    /// Returns the exit code.
     @discardableResult
-    public func run(args: [String]) -> Int32 {
-        guard !args.isEmpty else {
-            printHelp()
+    public func run(arguments: [String]) -> Int32 {
+        if arguments.isEmpty {
+            return 0  // caller should enter native-messaging loop
+        }
+
+        switch arguments[0] {
+        case "--bundle":
+            return handleBundle(arguments: Array(arguments.dropFirst()))
+        case "--status":
+            return handleStatus()
+        case "--config":
+            return handleConfig()
+        case "--version":
+            return handleVersion()
+        case "--help", "-h":
+            return handleHelp()
+        default:
+            fputs("Unknown option: \(arguments[0])\n", stderr)
+            fputs("Run with --help for usage.\n", stderr)
+            return 1
+        }
+    }
+
+    // MARK: - Command handlers
+
+    private func handleBundle(arguments: [String]) -> Int32 {
+        let useMarkdown = arguments.contains("--markdown")
+
+        if let bundle = BundleStore.loadBundle() {
+            if useMarkdown {
+                print(BundleFormatter.markdown(bundle))
+            } else {
+                if let json = try? BundleFormatter.json(bundle) {
+                    print(json)
+                } else {
+                    fputs("Error: failed to encode bundle as JSON.\n", stderr)
+                    return 1
+                }
+            }
             return 0
         }
 
-        switch args[0] {
-        case "--help", "-h":
-            printHelp()
-            return 0
-
-        case "--version", "-v":
-            print("tabx-host \(Self.version)")
-            return 0
-
-        case "--bundle":
-            return printBundle(format: .json)
-
-        case "--bundle-md":
-            return printBundle(format: .markdown)
-
-        case "--status":
-            return printStatus()
-
-        case "--config":
-            return printConfig()
-
-        case "--config-set":
-            guard args.count >= 2 else {
-                fputs("Error: --config-set requires KEY=VALUE\n", stderr)
+        // No bundle on disk — generate from current git context.
+        let git = GitContext.detect()
+        let bundle = ContextBundle(
+            generatedAt: Date(),
+            gitBranch: git.branch,
+            gitRepoPath: git.repoPath,
+            pagesRead: [],
+            survivingTabs: [],
+            openFiles: git.recentFiles,
+            taskDescription: git.branch.map { $0.replacingOccurrences(of: "/", with: ": ").replacingOccurrences(of: "-", with: " ") }
+        )
+        if useMarkdown {
+            print(BundleFormatter.markdown(bundle))
+        } else {
+            if let json = try? BundleFormatter.json(bundle) {
+                print(json)
+            } else {
+                fputs("Error: failed to encode bundle as JSON.\n", stderr)
                 return 1
             }
-            return setConfig(pair: args[1])
-
-        default:
-            fputs("Unknown flag: \(args[0])\n", stderr)
-            printHelp()
-            return 1
-        }
-    }
-
-    // MARK: - Command implementations
-
-    private enum OutputFormat { case json, markdown }
-
-    private func printBundle(format: OutputFormat) -> Int32 {
-        guard let bundle = bundleStore.loadLatestBundle() else {
-            fputs("No bundle found. Run the extension to generate one.\n", stderr)
-            return 1
-        }
-        do {
-            let output: String
-            switch format {
-            case .json:     output = try formatter.json(bundle)
-            case .markdown: output = formatter.markdown(bundle)
-            }
-            print(output)
-            return 0
-        } catch {
-            fputs("Error formatting bundle: \(error)\n", stderr)
-            return 1
-        }
-    }
-
-    private func printStatus() -> Int32 {
-        let state = bundleStore.loadState()
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        enc.dateEncodingStrategy = .iso8601
-        let obj: [String: String] = [
-            "version":      Self.version,
-            "lastScoredAt": state.lastScoredAt.map { ISO8601DateFormatter().string(from: $0) } ?? "never",
-            "tabCount":     "\(state.tabCount)",
-            "closedCount":  "\(state.closedCount)",
-            "bundleCount":  "\(bundleStore.allBundleURLs().count)",
-        ]
-        if let data = try? enc.encode(obj),
-           let str = String(data: data, encoding: .utf8) {
-            print(str)
         }
         return 0
     }
 
-    private func printConfig() -> Int32 {
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        enc.dateEncodingStrategy = .iso8601
-        guard let data = try? enc.encode(configManager.config),
-              let str = String(data: data, encoding: .utf8) else {
-            fputs("Error encoding config\n", stderr)
-            return 1
-        }
-        print(str)
+    private func handleStatus() -> Int32 {
+        let git = GitContext.detect()
+        let bundleExists = FileManager.default.fileExists(atPath: BundleStore.bundleURL.path)
+        let branch = git.branch ?? "(detached)"
+        let repo = git.repoPath ?? "(none)"
+        let bundleStatus = bundleExists ? "available" : "none"
+        print("tabx-host \(configManager.config.version)")
+        print("Branch:  \(branch)")
+        print("Repo:    \(repo)")
+        print("Bundle:  \(bundleStatus)")
+        print("Config:  \(ConfigManager.configURL.path)")
         return 0
     }
 
-    private func setConfig(pair: String) -> Int32 {
-        let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else {
-            fputs("Invalid format. Use KEY=VALUE\n", stderr)
-            return 1
-        }
-        let key = parts[0].trimmingCharacters(in: .whitespaces)
-        let value = parts[1].trimmingCharacters(in: .whitespaces)
-
-        var scoring = configManager.scoringConfig
-        switch key {
-        case "sensitivity":
-            guard let d = Double(value) else { return configError(key: key, value: value) }
-            scoring.sensitivity = d
-        case "closeThreshold":
-            guard let d = Double(value) else { return configError(key: key, value: value) }
-            scoring.closeThreshold = d
-        case "keepThreshold":
-            guard let d = Double(value) else { return configError(key: key, value: value) }
-            scoring.keepThreshold = d
-        case "stalenessThresholdSeconds":
-            guard let d = Double(value) else { return configError(key: key, value: value) }
-            scoring.stalenessThresholdSeconds = d
-        case "retentionSeconds":
-            guard let d = Double(value) else { return configError(key: key, value: value) }
-            scoring.retentionSeconds = d
-        default:
-            fputs("Unknown config key: \(key)\n", stderr)
-            return 1
-        }
-        do {
-            try configManager.updateScoring(scoring)
-            print("Updated \(key) = \(value)")
-            return 0
-        } catch {
-            fputs("Error saving config: \(error)\n", stderr)
-            return 1
-        }
+    private func handleConfig() -> Int32 {
+        print(configManager.prettyJSON())
+        return 0
     }
 
-    private func configError(key: String, value: String) -> Int32 {
-        fputs("Invalid value '\(value)' for key '\(key)'\n", stderr)
-        return 1
+    private func handleVersion() -> Int32 {
+        print("tabx-host \(configManager.config.version)")
+        return 0
     }
 
-    private func printHelp() {
-        print("""
-        tabx-host \(Self.version)
+    private func handleHelp() -> Int32 {
+        let usage = """
+        Usage: tabx-host [OPTION]
 
-        USAGE:
-          tabx-host [FLAG]
+        When called with no options, enters Chrome native messaging mode (reads
+        length-prefixed JSON from stdin and writes to stdout).
 
-        FLAGS:
-          --bundle          Print latest context bundle (JSON)
-          --bundle-md       Print latest context bundle (Markdown)
-          --status          Print host status
-          --config          Print current configuration
-          --config-set K=V  Set a config value (e.g. sensitivity=0.7)
-          --version         Print version
-          --help            Show this help
-
-        Without flags, enters native messaging mode (used by the Chrome extension).
-        """)
+        Options:
+          --bundle [--markdown]  Print the latest context bundle (JSON or Markdown)
+          --status               Print current status (branch, repo, bundle)
+          --config               Print the current configuration as JSON
+          --version              Print version information
+          --help                 Show this help message
+        """
+        print(usage)
+        return 0
     }
 }

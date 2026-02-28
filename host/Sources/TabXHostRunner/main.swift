@@ -1,35 +1,33 @@
 import Foundation
 import TabXHostLib
 
-// MARK: - Entry point
+// Drop the binary name from arguments.
+let args = Array(CommandLine.arguments.dropFirst())
 
-let args = Array(CommandLine.arguments.dropFirst())  // strip binary path
+let cli = CLIHandler()
+let exitCode = cli.run(arguments: args)
 
-// Any known CLI flag → run in CLI mode, then exit.
-let cliFlags: Set<String> = ["--bundle", "--bundle-md", "--status", "--config",
-                              "--config-set", "--version", "--help", "-h", "-v"]
-
-if let first = args.first, cliFlags.contains(first) || first.hasPrefix("--config-set") {
-    let handler = CLIHandler()
-    let code = handler.run(args: args)
-    exit(code)
+// If arguments were provided, the CLI handled the command — exit now.
+if !args.isEmpty {
+    exit(exitCode)
 }
 
-// No CLI flag → enter native messaging loop.
+// No CLI arguments → enter native messaging loop.
 let io = NativeMessagingIO()
 let router = MessageRouter()
 
 while true {
     guard let message = io.readMessage() else {
-        // EOF or unreadable message: exit cleanly.
+        // EOF or malformed length prefix — Chrome closed the pipe.
         break
     }
-    let response = router.handle(message)
+
+    let reply = router.handle(message)
     do {
-        try io.writeMessage(response)
+        try io.writeMessage(reply)
     } catch {
-        // Best-effort error response; if this also fails, exit.
-        let errMsg = OutgoingMessage(type: .error, error: error.localizedDescription)
-        try? io.writeMessage(errMsg)
+        // Write error is unrecoverable — exit cleanly.
+        fputs("tabx-host: write error: \(error)\n", stderr)
+        break
     }
 }

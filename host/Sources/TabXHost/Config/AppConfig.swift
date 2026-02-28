@@ -1,24 +1,22 @@
 import Foundation
 
-/// Top-level application configuration that wraps scoring config and host preferences.
+/// Top-level application configuration combining scoring settings and app preferences.
 public struct AppConfig: Codable, Sendable {
+    /// Scoring / pruning configuration.
     public var scoring: ScoringConfig
-    public var logLevel: LogLevel
-    /// Optional path override for the bundle storage root (defaults to ~/.tabx/).
-    public var bundleStorePath: String?
-
-    public enum LogLevel: String, Codable, Sendable {
-        case debug, info, warning, error
-    }
+    /// Whether to write debug logs to stderr.
+    public var debugLogging: Bool
+    /// Version string reported by `--version`.
+    public var version: String
 
     public init(
         scoring: ScoringConfig = .default,
-        logLevel: LogLevel = .info,
-        bundleStorePath: String? = nil
+        debugLogging: Bool = false,
+        version: String = "1.0.0"
     ) {
         self.scoring = scoring
-        self.logLevel = logLevel
-        self.bundleStorePath = bundleStorePath
+        self.debugLogging = debugLogging
+        self.version = version
     }
 
     public static let `default` = AppConfig()

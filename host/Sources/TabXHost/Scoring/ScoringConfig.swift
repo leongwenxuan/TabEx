@@ -1,19 +1,18 @@
 import Foundation
 
-/// Signal weights that control how much each scoring component contributes to the final score.
+/// Per-signal weights used in the composite scoring formula.
 public struct SignalWeights: Codable, Sendable {
-    public var gitRelevance: Double
+    /// Weight for git-branch / file relevance signal (default 35%).
+    public var git: Double
+    /// Weight for recency / time-decay signal (default 20%).
     public var recency: Double
+    /// Weight for reading depth signal (default 25%).
     public var readingDepth: Double
+    /// Weight for semantic similarity signal (default 20%).
     public var semantic: Double
 
-    public init(
-        gitRelevance: Double = 0.35,
-        recency: Double = 0.20,
-        readingDepth: Double = 0.25,
-        semantic: Double = 0.20
-    ) {
-        self.gitRelevance = gitRelevance
+    public init(git: Double = 0.35, recency: Double = 0.20, readingDepth: Double = 0.25, semantic: Double = 0.20) {
+        self.git = git
         self.recency = recency
         self.readingDepth = readingDepth
         self.semantic = semantic
@@ -21,18 +20,17 @@ public struct SignalWeights: Codable, Sendable {
 
     public static let `default` = SignalWeights()
 
-    /// Validates that weights sum to approximately 1.0.
+    /// Validates that weights sum to 1.0 (within floating point tolerance).
     public var isValid: Bool {
-        let sum = gitRelevance + recency + readingDepth + semantic
-        return abs(sum - 1.0) < 0.001
+        abs(git + recency + readingDepth + semantic - 1.0) < 0.001
     }
 }
 
-/// Thresholds that determine the close/flag/keep decision bucket.
+/// Score thresholds that map a composite score to a tab decision.
 public struct DecisionThresholds: Codable, Sendable {
-    /// Score strictly below this → close decision.
+    /// Score below this → .close decision.
     public var close: Double
-    /// Score at or above this → keep decision. Scores in [close, keep) → flag.
+    /// Score above this → .keep decision. Between close and keep → .flag.
     public var keep: Double
 
     public init(close: Double = 0.3, keep: Double = 0.6) {

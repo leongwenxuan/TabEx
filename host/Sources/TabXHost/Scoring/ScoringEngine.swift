@@ -1,5 +1,5 @@
 import Foundation
-import NaturalLanguage
+@preconcurrency import NaturalLanguage
 
 /// Computes relevance scores for browser tabs and emits close/keep/flag decisions.
 ///
