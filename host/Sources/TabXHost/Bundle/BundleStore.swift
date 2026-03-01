@@ -224,6 +224,70 @@ public final class BundleStore {
         return (try? dec.decode([ArenaRound].self, from: data)) ?? []
     }
 
+    // MARK: - Active session sidecar
+
+    /// Lightweight metadata telling the menu bar app which branch owns the current tabs.
+    public struct ActiveSessionInfo: Codable, Sendable {
+        public let branch: String
+        public let repoPath: String
+        public let workspaceKey: WorkspaceKey
+        public let timestamp: Date
+
+        public init(branch: String, repoPath: String, workspaceKey: WorkspaceKey) {
+            self.branch = branch
+            self.repoPath = repoPath
+            self.workspaceKey = workspaceKey
+            self.timestamp = Date()
+        }
+    }
+
+    public static var activeSessionURL: URL {
+        storeDirectory.appendingPathComponent("active-session.json")
+    }
+
+    public static func saveActiveSession(_ info: ActiveSessionInfo) {
+        do {
+            try ensureDirectory()
+            let enc = JSONEncoder()
+            enc.dateEncodingStrategy = .iso8601
+            enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try enc.encode(info)
+            try data.write(to: activeSessionURL, options: .atomic)
+        } catch {
+            fputs("[TabX] Failed to save active session: \(error)\n", stderr)
+        }
+    }
+
+    public static func loadActiveSession() -> ActiveSessionInfo? {
+        guard let data = try? Data(contentsOf: activeSessionURL) else { return nil }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        return try? dec.decode(ActiveSessionInfo.self, from: data)
+    }
+
+    // MARK: - Reset
+
+    /// Removes all cached/session data except config. Returns the number of files removed.
+    @discardableResult
+    public static func resetAll() -> Int {
+        let fm = FileManager.default
+        var removed = 0
+        let files = [tabsURL, resultsURL, activeSessionURL, arenaHistoryURL, bundleURL, stateURL]
+        for url in files {
+            if fm.fileExists(atPath: url.path) {
+                try? fm.removeItem(at: url)
+                removed += 1
+            }
+        }
+        // Remove sessions directory
+        let sessions = storeDirectory.appendingPathComponent("sessions", isDirectory: true)
+        if fm.fileExists(atPath: sessions.path) {
+            try? fm.removeItem(at: sessions)
+            removed += 1
+        }
+        return removed
+    }
+
     // MARK: - Private
 
     private static func ensureDirectory() throws {

@@ -104,6 +104,33 @@ function bindBundleButton(): void {
   });
 }
 
+// ─── Reset data ──────────────────────────────────────────────────────────────
+
+function bindResetButton(): void {
+  const btn = document.getElementById("reset-data-btn") as HTMLButtonElement | null;
+  btn?.addEventListener("click", () => {
+    btn.disabled = true;
+    btn.textContent = "Resetting…";
+    sendCommand({ type: "reset_data" })
+      .then(async () => {
+        // Re-fetch fresh state to update all panels immediately
+        const state = (await sendCommand({ type: "get_state" })) as PopupStateMessage | null;
+        if (state?.type === "popup_state") {
+          applyState(state);
+        }
+        btn.textContent = "Done!";
+        setTimeout(() => {
+          btn.textContent = "Reset All Data";
+          btn.disabled = false;
+        }, 1500);
+      })
+      .catch(() => {
+        btn.textContent = "Reset All Data";
+        btn.disabled = false;
+      });
+  });
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init(): Promise<void> {
@@ -115,6 +142,9 @@ async function init(): Promise<void> {
 
   // Wire up context bundle button
   bindBundleButton();
+
+  // Wire up reset button
+  bindResetButton();
 
   // Listen for push updates from the background
   chrome.runtime.onMessage.addListener((msg: unknown) => {

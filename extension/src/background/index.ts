@@ -15,12 +15,12 @@ import { DecisionManager } from "./decision-manager.js";
 import { UndoManager } from "./undo-manager.js";
 import {
   getStorage,
-  getConfig,
   updateConfig,
   addDontCloseRule,
   removeDontCloseRule,
   setConnectionStatus,
   setPendingRestore,
+  resetData,
 } from "./storage.js";
 import type {
   ContentReadingMessage,
@@ -39,17 +39,38 @@ const nativeClient = new NativeMessagingClient(
 );
 
 nativeClient.setSessionSwitchHandler(async (info) => {
-  if (!info.hasSavedSession) return;
+  // Collect all existing tab IDs before opening new ones
+  const existingTabs = await chrome.tabs.query({});
+  const existingIds = existingTabs
+    .map((t) => t.id)
+    .filter((id): id is number => id !== undefined);
 
-  const config = await getConfig();
-  if (config.autoRestore && info.incomingKey) {
-    // Auto-restore: send restore command immediately, no banner needed
-    nativeClient.sendRestoreSession(info.incomingKey);
-    await setPendingRestore(null);
+  // Open saved tabs for the incoming branch (or a blank tab if none)
+  if (info.tabsToOpen && info.tabsToOpen.length > 0) {
+    for (let i = 0; i < info.tabsToOpen.length; i++) {
+      try {
+        await chrome.tabs.create({ url: info.tabsToOpen[i].url, active: i === 0 });
+      } catch {
+        // tab creation may fail for invalid URLs
+      }
+    }
   } else {
-    // Manual restore: show the banner in the popup
-    await setPendingRestore(info);
+    await chrome.tabs.create({ active: true });
   }
+
+  // Close the old tabs (now that new ones exist, Chrome won't exit)
+  for (const id of existingIds) {
+    try {
+      await chrome.tabs.remove(id);
+    } catch {
+      // tab may already be gone
+    }
+  }
+
+  // Prune stale tab entries from storage so the next periodic sync
+  // doesn't leak closed tabs into the new branch's session.
+  await tabTracker.pruneStale();
+
   await broadcastPopupState();
 });
 
@@ -194,6 +215,13 @@ async function handlePopupCommand(
       break;
     }
 
+    case "reset_data": {
+      await resetData();
+      sendResponse({ ok: true });
+      await broadcastPopupState();
+      break;
+    }
+
     default:
       sendResponse({ ok: false, error: "unknown_command" });
   }
@@ -222,6 +250,16 @@ async function broadcastPopupState(): Promise<void> {
     // Popup may not be open — ignore "Could not establish connection" errors
   }
 }
+
+// ─── Periodic tab sync (so host detects branch switches) ─────────────────────
+
+setInterval(() => {
+  void (async () => {
+    await tabTracker.accrueActiveTime();
+    const tabs = await tabTracker.getAllTabs();
+    if (tabs.length > 0) nativeClient.sendTabData(tabs);
+  })();
+}, 5_000);
 
 // ─── Alarm for periodic tab time accrual ─────────────────────────────────────
 

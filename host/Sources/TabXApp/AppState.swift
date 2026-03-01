@@ -62,6 +62,11 @@ final class AppState {
     var bundleGeneratedAt: Date? = nil
     var recentlyClosed: [ClosedTabRecord] = []
 
+    // Branch / session state
+    var activeBranch: String? = nil
+    var activeWorkspaceKey: String? = nil
+    var sessionIndex: [SessionIndexEntry] = []
+
     // Arena state
     var arenaPhase: ArenaPhase = .idle
     var contestants: [ArenaContestant] = []
@@ -93,7 +98,8 @@ final class AppState {
         refreshBundle()
         loadResultsFromDisk()
         loadTabsFromDisk()
-        loadDemoTabs()
+        loadActiveSessionFromDisk()
+        loadSessionIndex()
         startPolling()
         startBundleServer()
     }
@@ -113,14 +119,11 @@ final class AppState {
     /// stays in sync with the CLI host that Chrome talks to.
     private func startPolling() {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            let oldBranch = self?.gitBranch
             self?.refreshGitContext()
             self?.loadResultsFromDisk()
             self?.loadTabsFromDisk()
-            // Refresh demo tabs when branch changes
-            if self?.gitBranch != oldBranch {
-                self?.loadDemoTabs()
-            }
+            self?.loadActiveSessionFromDisk()
+            self?.loadSessionIndex()
         }
     }
 
@@ -145,10 +148,14 @@ final class AppState {
     }
 
     /// Load raw tab data from Chrome (available on every tab_update, not just branch switches).
+    private var lastBranchSwitchAt: Date? = nil
+
     private func loadTabsFromDisk() {
         guard let snapshot = BundleStore.loadTabs() else { return }
-        // Don't overwrite scored results with raw tabs.
-        guard tabResults.isEmpty || lastArenaAt == nil else { return }
+        // Don't overwrite while an arena fight is actively running.
+        if case .idle = arenaPhase {} else { return }
+        // Skip stale tabs from before a branch switch
+        if let switchAt = lastBranchSwitchAt, snapshot.timestamp <= switchAt { return }
         tabResults = snapshot.tabs.map { tab in
             TabDisplayItem(
                 id: tab.tabId,
@@ -163,80 +170,47 @@ final class AppState {
         }
     }
 
-    // MARK: - Demo data
+    /// Generates a markdown context bundle from arena winners (keep/flag decisions only).
+    func winningContextMarkdown() -> String {
+        let winners = tabResults.filter { $0.decision == .keep || $0.decision == .flag }
+            .sorted { $0.score > $1.score }
+        if winners.isEmpty { return "No winning tabs from the last arena fight." }
 
-    /// Hardcoded tabs per branch for demo / testing purposes.
-    private func loadDemoTabs() {
-        let branch = gitBranch ?? "main"
+        var lines: [String] = []
+        lines.append("# TabX Winning Context")
+        lines.append("")
+        if let branch = activeBranch ?? gitBranch {
+            lines.append("**Branch:** `\(branch)`")
+        }
+        lines.append("**Winners:** \(winners.count) tabs")
+        lines.append("")
 
-        let demoResults: [TabDisplayItem]
-        let demoContestants: [ArenaContestant]
-
-        switch branch {
-        case "main":
-            let tabs: [(id: Int, title: String, url: String, decision: TabDecision, score: Double, summary: String)] = [
-                (1, "TabX — GitHub", "https://github.com/leongwenxuan/tabex", .keep, 0.92,
-                 "Main repository page, essential for project overview"),
-                (2, "Swift Package Manager — Apple Docs", "https://developer.apple.com/documentation/xcode/swift-packages", .keep, 0.85,
-                 "Reference for SPM configuration and targets"),
-                (3, "Chrome Extensions — Getting Started", "https://developer.chrome.com/docs/extensions/get-started", .keep, 0.78,
-                 "Manifest V3 extension development guide"),
-                (4, "Stack Overflow — NSTask pipe deadlock", "https://stackoverflow.com/questions/28821143", .flag, 0.45,
-                 "Debugging pipe deadlock in Foundation Process"),
-                (5, "Reddit — r/swift", "https://reddit.com/r/swift", .close, 0.18,
-                 "General browsing, not related to current task"),
-                (6, "YouTube — WWDC 2024", "https://youtube.com/watch?v=wwdc2024", .close, 0.12,
-                 "Entertainment, no relevance to current work"),
-            ]
-            demoResults = tabs.map {
-                TabDisplayItem(id: $0.id, title: $0.title, url: $0.url, decision: $0.decision,
-                               score: $0.score, reason: $0.summary, summary: $0.summary, insights: nil)
+        for tab in winners {
+            let badge = tab.decision == .keep ? "KEEP" : "FLAG"
+            lines.append("## [\(badge) \(String(format: "%.0f%%", tab.score * 100))] \(tab.title)")
+            lines.append("- **URL:** \(tab.url)")
+            if !tab.reason.isEmpty && tab.reason != "Awaiting scoring" {
+                lines.append("- **Reason:** \(tab.reason)")
             }
-            demoContestants = tabs.map {
-                ArenaContestant(id: $0.id, title: $0.title, url: $0.url,
-                                status: .decided(decision: $0.decision, score: $0.score),
-                                summary: $0.summary)
+            if let summary = tab.summary {
+                lines.append("- **Summary:** \(summary)")
             }
-
-        case "create-agentic-scan":
-            let tabs: [(id: Int, title: String, url: String, decision: TabDecision, score: Double, summary: String)] = [
-                (10, "OpenAI API — Chat Completions", "https://platform.openai.com/docs/api-reference/chat", .keep, 0.95,
-                 "Core API reference for agent LLM calls"),
-                (11, "LangChain Agents — Docs", "https://docs.langchain.com/docs/components/agents", .keep, 0.88,
-                 "Agent architecture patterns and tool-use design"),
-                (12, "GitHub — TabX PR #12: Add agentic scanning", "https://github.com/leongwenxuan/tabex/pull/12", .keep, 0.91,
-                 "Active PR for the agentic scan feature"),
-                (13, "Anthropic — Tool Use Guide", "https://docs.anthropic.com/en/docs/tool-use", .keep, 0.82,
-                 "Reference for structured tool-calling patterns"),
-                (14, "MDN — Web Workers API", "https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API", .flag, 0.40,
-                 "Potentially useful for background processing, but not directly needed"),
-                (15, "Twitter / X — Tech Feed", "https://x.com/home", .close, 0.08,
-                 "Social media distraction, no relevance to agentic scanning"),
-            ]
-            demoResults = tabs.map {
-                TabDisplayItem(id: $0.id, title: $0.title, url: $0.url, decision: $0.decision,
-                               score: $0.score, reason: $0.summary, summary: $0.summary, insights: nil)
+            if let insights = tab.insights, !insights.isEmpty {
+                lines.append("- **Insights:**")
+                for insight in insights {
+                    lines.append("  - \(insight)")
+                }
             }
-            demoContestants = tabs.map {
-                ArenaContestant(id: $0.id, title: $0.title, url: $0.url,
-                                status: .decided(decision: $0.decision, score: $0.score),
-                                summary: $0.summary)
-            }
-
-        default:
-            // Unknown branch — show a generic set
-            demoResults = [
-                TabDisplayItem(id: 99, title: "No tabs tracked for branch: \(branch)",
-                               url: "", decision: .keep, score: 0, reason: "Switch to a known branch",
-                               summary: nil, insights: nil)
-            ]
-            demoContestants = []
+            lines.append("")
         }
 
-        tabResults = demoResults
-        contestants = demoContestants
-        arenaPhase = .decided
-        lastArenaAt = Date()
+        return lines.joined(separator: "\n")
+    }
+
+    func resetArena() {
+        lastArenaAt = nil
+        arenaPhase = .idle
+        contestants = []
     }
 
     // MARK: - Arena events
@@ -294,11 +268,18 @@ final class AppState {
 
     func runManualArena() {
         guard !arenaRunning else { return }
-        guard let snapshot = BundleStore.loadResults(), !snapshot.tabs.isEmpty else { return }
+
+        // Try scored results first, fall back to raw tab data from Chrome.
+        let tabs: [TabData]
+        if let scored = BundleStore.loadResults(), !scored.tabs.isEmpty {
+            tabs = scored.tabs
+        } else if let raw = BundleStore.loadTabs(), !raw.tabs.isEmpty {
+            tabs = raw.tabs
+        } else {
+            return
+        }
 
         arenaRunning = true
-
-        let tabs = snapshot.tabs
         let runner = AgentRunner(
             config: configManager.config.scoring,
             openaiConfig: configManager.config.openai
@@ -368,6 +349,21 @@ final class AppState {
     func refreshGitContext() {
         let detectFrom = configManager.config.repoPath ?? FileManager.default.currentDirectoryPath
         let ctx = GitContext.detect(from: detectFrom)
+        // Detect branch change from local git and update active session
+        if let branch = ctx.branch, let repoPath = ctx.repoPath, branch != gitBranch, gitBranch != nil {
+            let key = WorkspaceKey(repoPath: repoPath, branch: branch)
+            activeBranch = branch
+            activeWorkspaceKey = key.rawValue
+            lastArenaAt = nil
+            lastBranchSwitchAt = Date()
+            tabResults = []
+            contestants = []
+            // Write active-session so the UI reflects immediately
+            BundleStore.saveActiveSession(
+                BundleStore.ActiveSessionInfo(branch: branch, repoPath: repoPath, workspaceKey: key)
+            )
+            loadSessionIndex()
+        }
         gitBranch = ctx.branch
         gitRepoPath = ctx.repoPath
     }
@@ -445,6 +441,60 @@ final class AppState {
         arenaHistory.insert(round, at: 0)
         if arenaHistory.count > 50 { arenaHistory = Array(arenaHistory.prefix(50)) }
         BundleStore.saveArenaRound(round)
+    }
+
+    // MARK: - Reset
+
+    func resetAll() {
+        BundleStore.resetAll()
+        tabResults = []
+        contestants = []
+        arenaHistory = []
+        arenaPhase = .idle
+        lastArenaAt = nil
+        recentlyClosed = []
+        activeBranch = nil
+        activeWorkspaceKey = nil
+        sessionIndex = []
+        gitBranch = nil
+        bundleGeneratedAt = nil
+    }
+
+    // MARK: - Active session / branch tracking
+
+    private func loadActiveSessionFromDisk() {
+        guard let info = BundleStore.loadActiveSession() else { return }
+        // Branch changed — clear stale arena results so loadTabsFromDisk can update
+        if activeBranch != nil && activeBranch != info.branch {
+            lastArenaAt = nil
+            tabResults = []
+            contestants = []
+        }
+        activeBranch = info.branch
+        activeWorkspaceKey = info.workspaceKey.rawValue
+    }
+
+    private func loadSessionIndex() {
+        sessionIndex = SessionStore.loadIndex()
+    }
+
+    func loadSessionTabs(for key: WorkspaceKey) -> [TabDisplayItem] {
+        guard let session = SessionStore.load(key: key) else { return [] }
+        return session.urlForTabId.compactMap { idStr, url -> TabDisplayItem? in
+            guard let tabId = Int(idStr) else { return nil }
+            let title = session.titleForTabId[idStr] ?? "Tab \(tabId)"
+            let result = session.latestResults.first { $0.tabId == tabId }
+            return TabDisplayItem(
+                id: tabId,
+                title: title,
+                url: url,
+                decision: result?.decision ?? .keep,
+                score: result?.score ?? 0,
+                reason: result?.reason ?? "Saved session",
+                summary: result?.summary,
+                insights: result?.insights
+            )
+        }.sorted { $0.title < $1.title }
     }
 
     // MARK: - Helpers

@@ -30,6 +30,7 @@ public final class MessageRouter {
     private let bundleGen: any BundleGeneratorProtocol
     private let configManager: ConfigManager
     private let sessionManager: SessionManager
+    private var lastSessionSaveAt: Date = .distantPast
 
     /// Called on the messaging thread after each tab-update scoring round.
     /// Receives the scored results and the original tab data.
@@ -71,6 +72,14 @@ public final class MessageRouter {
                 recentFiles: bundle.openFiles
             )
 
+            // Write active-session sidecar so the menu bar app knows the current branch.
+            if let branch = gitContext.branch, let repoPath = gitContext.repoPath {
+                let key = WorkspaceKey(repoPath: repoPath, branch: branch)
+                BundleStore.saveActiveSession(
+                    BundleStore.ActiveSessionInfo(branch: branch, repoPath: repoPath, workspaceKey: key)
+                )
+            }
+
             var switchPayload: SessionSwitchPayload? = nil
             let event = sessionManager.checkBranchSwitch(gitContext: gitContext)
 
@@ -85,29 +94,45 @@ public final class MessageRouter {
                     )
                 }
 
-                // Check if incoming branch has a saved session.
+                // Load incoming branch's saved session and extract tabs to open.
                 let incoming = sessionManager.loadSession(key: event.incomingKey)
+                let tabsToOpen: [TabToOpen]? = incoming.map { session in
+                    session.urlForTabId.map { idStr, url in
+                        TabToOpen(url: url, title: session.titleForTabId[idStr] ?? "")
+                    }
+                }
+
                 switchPayload = SessionSwitchPayload(
                     fromBranch: event.fromBranch,
                     toBranch: event.toBranch,
                     repoPath: event.repoPath,
                     hasSavedSession: incoming != nil,
-                    incomingKey: event.incomingKey.rawValue
+                    incomingKey: event.incomingKey.rawValue,
+                    tabsToOpen: tabsToOpen
                 )
             }
 
-            // Only score tabs when a branch switch is detected.
-            if event != nil {
-                let results = scorer.score(tabs: tabs)
-                bundleGen.updateResults(results)
-                let freshBundle = bundleGen.generateBundle()
-                try? BundleStore.saveBundle(freshBundle)
-                BundleStore.saveResults(results, tabs: tabs)
-                onDecisions?(results, tabs)
-                return OutgoingMessage(type: .decisions, results: results, sessionSwitch: switchPayload)
+            // On branch switch, send session_switch with tabs to open (no scoring).
+            if switchPayload != nil {
+                try? BundleStore.saveBundle(bundle)
+                return OutgoingMessage(type: .sessionSwitch, sessionSwitch: switchPayload)
             }
 
-            // No branch switch — persist bundle and raw tab data, no scoring.
+            // No branch switch — persist bundle and raw tab data.
+            // Throttled session save (every 10s) so branch tabs stay fresh in the index.
+            if let branch = gitContext.branch, let repoPath = gitContext.repoPath {
+                let now = Date()
+                if now.timeIntervalSince(lastSessionSaveAt) >= 10 {
+                    lastSessionSaveAt = now
+                    let key = WorkspaceKey(repoPath: repoPath, branch: branch)
+                    sessionManager.saveSession(
+                        key: key,
+                        repoPath: repoPath,
+                        branch: branch,
+                        state: bundleGen.snapshot()
+                    )
+                }
+            }
             try? BundleStore.saveBundle(bundle)
             BundleStore.saveTabs(tabs)
             return OutgoingMessage(type: .pong)

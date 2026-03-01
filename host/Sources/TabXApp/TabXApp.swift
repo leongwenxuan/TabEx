@@ -39,8 +39,9 @@ struct MenuBarPanel: View {
             sectionPicker
             Divider()
             sectionContent
+            Spacer(minLength: 0)
         }
-        .frame(width: 440)
+        .frame(width: 440, height: 520)
         .background(.regularMaterial)
     }
 
@@ -48,6 +49,7 @@ struct MenuBarPanel: View {
         Picker("", selection: $selectedTab) {
             Text("Arena").tag(PanelSection.arena)
             Text("Tabs (\(appState.tabResults.count))").tag(PanelSection.tabs)
+            Text("Branches").tag(PanelSection.branches)
             Text("Closed").tag(PanelSection.closed)
             Text("Settings").tag(PanelSection.settings)
         }
@@ -63,6 +65,8 @@ struct MenuBarPanel: View {
             ArenaView(appState: appState)
         case .tabs:
             TabListView(tabResults: appState.tabResults)
+        case .branches:
+            BranchesView(appState: appState)
         case .closed:
             ClosedTabsView(appState: appState)
         case .settings:
@@ -72,7 +76,7 @@ struct MenuBarPanel: View {
 }
 
 enum PanelSection: Hashable {
-    case arena, tabs, closed, settings
+    case arena, tabs, branches, closed, settings
 }
 
 // MARK: - Header
@@ -85,7 +89,7 @@ struct PanelHeader: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("TabX")
                     .font(.headline)
-                if let branch = appState.gitBranch {
+                if let branch = appState.activeBranch ?? appState.gitBranch {
                     Label(branch, systemImage: "arrow.triangle.branch")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -174,14 +178,34 @@ struct ArenaView: View {
         }
     }
 
+    @State private var copiedContext = false
+
     private var arenaHeader: some View {
         HStack {
             phaseIndicator
             Spacer()
-            if let lastAt = appState.lastArenaAt {
-                Text(lastAt, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+            if appState.lastArenaAt != nil {
+                Button {
+                    let md = appState.winningContextMarkdown()
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(md, forType: .string)
+                    copiedContext = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedContext = false }
+                } label: {
+                    Text(copiedContext ? "Copied!" : "Copy Context")
+                        .font(.caption2)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+
+                Button {
+                    appState.resetArena()
+                } label: {
+                    Text("Clear")
+                        .font(.caption2)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
             }
             fightButton
         }
@@ -204,7 +228,7 @@ struct ArenaView: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .tint(.orange)
-        .disabled(appState.arenaRunning || BundleStore.loadResults()?.tabs.isEmpty != false)
+        .disabled(appState.arenaRunning || appState.tabResults.isEmpty)
     }
 
     @ViewBuilder
@@ -827,6 +851,168 @@ struct TabRowView: View {
     }
 }
 
+// MARK: - Branches
+
+struct BranchesView: View {
+    let appState: AppState
+    @State private var selectedEntry: SessionIndexEntry? = nil
+    @State private var drillDownTabs: [TabDisplayItem] = []
+
+    var body: some View {
+        if let entry = selectedEntry {
+            branchDetail(entry)
+        } else if appState.sessionIndex.isEmpty {
+            emptyState
+        } else {
+            branchList
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.largeTitle)
+                .foregroundStyle(.tertiary)
+            Text("No branch sessions yet")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Text("Switch branches while TabX is running to see sessions here.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(28)
+    }
+
+    private var branchList: some View {
+        ScrollView {
+            LazyVStack(spacing: 2) {
+                ForEach(appState.sessionIndex, id: \.workspaceKey.rawValue) { entry in
+                    let isActive = entry.workspaceKey.rawValue == appState.activeWorkspaceKey
+                    BranchRow(
+                        entry: entry,
+                        isActive: isActive,
+                        liveTabCount: isActive ? appState.tabResults.count : nil
+                    ) {
+                        if isActive {
+                            drillDownTabs = appState.tabResults
+                        } else {
+                            drillDownTabs = appState.loadSessionTabs(for: entry.workspaceKey)
+                        }
+                        selectedEntry = entry
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .frame(maxHeight: 400)
+    }
+
+    private func branchDetail(_ entry: SessionIndexEntry) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button {
+                    selectedEntry = nil
+                    drillDownTabs = []
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.caption2)
+                        Text("Back")
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                Spacer()
+                Text(entry.branch)
+                    .font(.caption)
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            Divider()
+            if drillDownTabs.isEmpty {
+                VStack(spacing: 8) {
+                    Text("No tabs saved for this branch")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(28)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(drillDownTabs) { tab in
+                            TabRowView(tab: tab)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                .frame(maxHeight: 400)
+            }
+        }
+    }
+}
+
+struct BranchRow: View {
+    let entry: SessionIndexEntry
+    let isActive: Bool
+    var liveTabCount: Int? = nil
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                if isActive {
+                    Circle()
+                        .fill(.green)
+                        .frame(width: 8, height: 8)
+                } else {
+                    Circle()
+                        .fill(.quaternary)
+                        .frame(width: 8, height: 8)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.branch)
+                        .font(.callout)
+                        .fontWeight(isActive ? .semibold : .regular)
+                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        Text("\(liveTabCount ?? entry.tabCount) tabs")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text((entry.repoPath as NSString).lastPathComponent)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(entry.capturedAt, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.quinary.opacity(0.5))
+            .cornerRadius(4)
+            .padding(.horizontal, 6)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Closed tabs
 
 struct ClosedTabsView: View {
@@ -902,6 +1088,8 @@ struct SettingsView: View {
                 sensitivitySection
                 Divider()
                 safelistSection
+                Divider()
+                resetSection
             }
             .padding(12)
         }
@@ -1015,6 +1203,26 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var resetSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Data")
+                .font(.callout)
+                .fontWeight(.medium)
+            Text("Clear all cached tabs, sessions, and arena history")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                appState.resetAll()
+            } label: {
+                Text("Reset All Data")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .controlSize(.small)
         }
     }
 

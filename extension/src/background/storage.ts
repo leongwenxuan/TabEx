@@ -137,6 +137,14 @@ export async function setPendingRestore(info: SessionSwitchInfo | null): Promise
   await chrome.storage.local.set({ pendingRestore: info });
 }
 
+export async function resetData(): Promise<void> {
+  const config = await getConfig();
+  const status = await getConnectionStatus();
+  await chrome.storage.local.clear();
+  await setConfig(config);
+  await setConnectionStatus(status);
+}
+
 export function matchesDontCloseRule(
   url: string,
   rules: DontCloseRule[]

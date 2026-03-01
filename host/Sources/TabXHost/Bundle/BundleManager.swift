@@ -66,6 +66,8 @@ public final class BundleManager {
 
     /// Builds and returns a fresh `ContextBundle`.  Also persists it to disk (NFR2 / FR14).
     public func generateBundle() -> ContextBundle {
+        // Re-detect git context on every call so branch switches are visible.
+        gitContext = GitContext.detect(from: configuredRepoPath ?? FileManager.default.currentDirectoryPath)
         let surviving: [SurvivingTab] = latestResults
             .filter { $0.decision != .close }
             .compactMap { result -> SurvivingTab? in
@@ -139,6 +141,9 @@ public final class BundleManager {
     // Override ingest to also populate side tables.
     public func ingest(_ tabs: [TabData], trackIds: Bool) {
         if trackIds {
+            // Replace — only currently open tabs should be tracked.
+            urlForTabId = [:]
+            titleForTabId = [:]
             for tab in tabs {
                 urlForTabId[tab.tabId]   = tab.url
                 titleForTabId[tab.tabId] = tab.title

@@ -111,25 +111,38 @@ public enum OutgoingMessageType: String, Codable, Sendable {
     case sessions
 }
 
+public struct TabToOpen: Codable, Sendable {
+    public let url: String
+    public let title: String
+
+    public init(url: String, title: String) {
+        self.url = url
+        self.title = title
+    }
+}
+
 public struct SessionSwitchPayload: Codable, Sendable {
     public let fromBranch: String?
     public let toBranch: String?
     public let repoPath: String?
     public let hasSavedSession: Bool
     public let incomingKey: String?
+    public let tabsToOpen: [TabToOpen]?
 
     public init(
         fromBranch: String?,
         toBranch: String?,
         repoPath: String?,
         hasSavedSession: Bool,
-        incomingKey: String?
+        incomingKey: String?,
+        tabsToOpen: [TabToOpen]? = nil
     ) {
         self.fromBranch = fromBranch
         self.toBranch = toBranch
         self.repoPath = repoPath
         self.hasSavedSession = hasSavedSession
         self.incomingKey = incomingKey
+        self.tabsToOpen = tabsToOpen
     }
 }
 

@@ -87,4 +87,5 @@ export type PopupCommand =
   | { type: "get_context_bundle" }
   | { type: "dismiss_decision"; tabId: number }
   | { type: "restore_session"; sessionKey: string }
-  | { type: "dismiss_restore" };
+  | { type: "dismiss_restore" }
+  | { type: "reset_data" };

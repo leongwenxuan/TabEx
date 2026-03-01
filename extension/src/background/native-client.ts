@@ -203,6 +203,11 @@ export class NativeMessagingClient {
         break;
       }
 
+      // Branch switch without scoring — host sends tabs to open
+      case "session_switch":
+        this.parseSessionSwitch(msg);
+        break;
+
       // Legacy response shape
       case "context_bundle":
         this.resolveBundle(msg.bundle);
@@ -235,14 +240,28 @@ export class NativeMessagingClient {
 
   private parseSessionSwitch(msg: Record<string, unknown>): void {
     if (!this.onSessionSwitch) return;
-    const sw = msg.sessionSwitch;
-    if (!isRecord(sw)) return;
+    // sessionSwitch payload can be nested (inside decisions) or at top level (session_switch type)
+    const sw = isRecord(msg.sessionSwitch) ? msg.sessionSwitch : msg;
+    if (!isRecord(sw) || typeof sw.fromBranch === "undefined") return;
+
+    let tabsToOpen: Array<{ url: string; title: string }> | null = null;
+    if (Array.isArray(sw.tabsToOpen)) {
+      tabsToOpen = sw.tabsToOpen
+        .filter(isRecord)
+        .filter((t) => typeof t.url === "string" && t.url.length > 0)
+        .map((t) => ({
+          url: t.url as string,
+          title: typeof t.title === "string" ? t.title : "",
+        }));
+    }
+
     const info: SessionSwitchInfo = {
       fromBranch: typeof sw.fromBranch === "string" ? sw.fromBranch : null,
       toBranch: typeof sw.toBranch === "string" ? sw.toBranch : null,
       repoPath: typeof sw.repoPath === "string" ? sw.repoPath : null,
       hasSavedSession: typeof sw.hasSavedSession === "boolean" ? sw.hasSavedSession : false,
       incomingKey: typeof sw.incomingKey === "string" ? sw.incomingKey : null,
+      tabsToOpen,
     };
     this.onSessionSwitch(info);
   }

@@ -505,6 +505,11 @@ body {
   margin-top: 4px;
 }
 
+.btn-danger {
+  background: var(--close);
+  color: #fff;
+}
+
 /* ── Bundle area ─────────────────────────────────────── */
 
 .bundle-area {
